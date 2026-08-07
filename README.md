@@ -6,7 +6,7 @@ Sprint 0 foundation for the **Timesheet and Invoicing Hours** module. This stati
 
 ## Status and versions
 
-- Product `ADMIN-0.1.0`; module `TIME-0.1.0`; Sprint 0.
+- Product `ADMIN-0.1.1`; module `TIME-0.1.1`; Sprint 0 corrective pass.
 - Build identity is injected from `GITHUB_SHA` (or `local-dev`).
 - Prototype only: supplied reference workbook structures and the Office Manager walkthrough were reviewed read-only; the staff layout and documented monthly sort/consolidate/carry-forward process are understood, while exact output replication still requires guided acceptance.
 - Intended public URL: `https://joerfreeman02.github.io/admin-toolkit/` (not live or verified until publishing completes).
@@ -27,9 +27,11 @@ pnpm build
 pnpm audit --prod
 ```
 
-Set `VITE_ADMIN_TOKEN_SHA256` to a SHA-256 hex digest in a local `.env`; never store the token itself. The static workstation gate is a convenience boundary, not production authentication.
+Set `VITE_ADMIN_TOKEN_SHA256` to a SHA-256 hex digest in a local `.env`; never store the token itself. Vite compiles the digest into the static browser build, so the digest is not secret after deployment. The workstation gate is a convenience boundary, not production authentication.
 
-GitHub Actions builds `main` and publishes `dist/` through GitHub Pages. See [architecture](docs/ARCHITECTURE.md), [testing](docs/TESTING.md), and [security](docs/CONFIDENTIALITY-AND-SECURITY.md).
+Processed public data fails closed: only entries classified as `project` enter the derived public dataset. Internal and unresolved exception records remain protected. Sprint 1 will require explicit Office Manager review/approval before a genuine uncoded exception can be published; the public viewer's uncoded example is fictional static demonstration data.
+
+GitHub Actions validates the Sprint branch. A separately registered, manual-only workflow publishes the selected Sprint SHA through GitHub Pages for acceptance. See [architecture](docs/ARCHITECTURE.md), [testing](docs/TESTING.md), [security](docs/CONFIDENTIALITY-AND-SECURITY.md), and [TIME-DATA-001](docs/TIME-DATA-001.md).
 
 ## Major dependencies
 

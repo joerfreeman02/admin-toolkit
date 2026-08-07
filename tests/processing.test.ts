@@ -183,10 +183,11 @@ describe("aggregation, reconciliation and confidentiality", () => {
     ]);
     expect(data.projects[0].total).toBe(9);
   });
-  it("puts uncoded projects after coded projects", () =>
-    expect(
-      toPublicDataset(entries, "2026-07").projects.at(-1)?.code,
-    ).toBeUndefined());
+  it("publishes coded projects only", () => {
+    const data = toPublicDataset(entries, "2026-07");
+    expect(data.projects).toHaveLength(1);
+    expect(data.projects[0].code).toBe("2101");
+  });
   it("reconciles every hour once", () =>
     expect(reconcile(entries)).toEqual({
       project: 9,
@@ -195,9 +196,23 @@ describe("aggregation, reconciliation and confidentiality", () => {
       total: 10.5,
       reconciles: true,
     }));
-  it("excludes internal categories and source details from public state", () => {
+  it("excludes internal categories, unresolved exceptions and source trace", () => {
     const json = JSON.stringify(toPublicDataset(entries, "2026-07"));
-    expect(json).not.toMatch(/Admin|a\.xlsx|worksheet|internal/);
+    expect(json).not.toMatch(
+      /Admin|Awaiting code|a\.xlsx|worksheet|internal|exception/,
+    );
+  });
+  it("keeps unknown internal-like descriptions protected", () => {
+    const mistypedInternal: TimeEntry = {
+      employee: "Employee A",
+      reportingMonth: "2026-07",
+      description: "Hollday",
+      hours: 1,
+      classification: classify(undefined, "Hollday"),
+      trace: { file: "private.xlsx", worksheet: "Timesheet", row: 7 },
+    };
+    expect(mistypedInternal.classification).toBe("exception");
+    expect(toPublicDataset([mistypedInternal], "2026-07").projects).toEqual([]);
   });
   it("validates the carryover model", () =>
     expect(

@@ -303,7 +303,7 @@ function AdminProcessing({ logout }: { logout: () => void }) {
           )}
           <div className="split">
             <div>
-              <h3>Project preview</h3>
+              <h3>Project and exception preview</h3>
               <EntryTable
                 entries={result.entries.filter(
                   (entry) => entry.classification !== "internal",
@@ -325,8 +325,9 @@ function AdminProcessing({ logout }: { logout: () => void }) {
               projects)
             </summary>
             <p>
-              Only coded and uncoded project records enter this derived dataset.
-              Source filenames and internal entries are excluded.
+              Only coded project records enter this derived dataset. Internal
+              and unresolved exception records, including unknown uncoded work,
+              remain protected. Source filenames are excluded.
             </p>
           </details>
         </>
@@ -454,9 +455,9 @@ export default function App() {
             <h2>Build information</h2>
             <dl>
               <dt>Product</dt>
-              <dd>ADMIN-0.1.0</dd>
+              <dd>ADMIN-0.1.1</dd>
               <dt>Module</dt>
-              <dd>TIME-0.1.0</dd>
+              <dd>TIME-0.1.1</dd>
               <dt>Build</dt>
               <dd>{__BUILD_ID__}</dd>
               <dt>Sprint</dt>
@@ -467,7 +468,7 @@ export default function App() {
       </main>
       <footer>
         <button onClick={nav("diagnostics")}>
-          ADMIN-0.1.0 · TIME-0.1.0 · {__BUILD_ID__}
+          ADMIN-0.1.1 · TIME-0.1.1 · {__BUILD_ID__}
         </button>
         <span>Files remain on this workstation.</span>
       </footer>

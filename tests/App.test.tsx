@@ -10,6 +10,7 @@ it("shows the public viewer without internal categories", () => {
   expect(screen.getByText("Employee project-hours viewer")).toBeVisible();
   expect(screen.queryByText("Holiday")).not.toBeInTheDocument();
   expect(screen.queryByText("Sick Leave")).not.toBeInTheDocument();
+  expect(screen.getByText(/Uncoded · Awaiting project code/)).toBeVisible();
 });
 it("redirects admin navigation to the workstation gate", () => {
   render(<App />);

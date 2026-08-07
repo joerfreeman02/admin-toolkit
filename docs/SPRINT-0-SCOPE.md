@@ -4,9 +4,9 @@
 
 Deliver an independent, publicly testable shell proving local synthetic workbook/ZIP ingestion, project/internal/exception classification, reconciliation, lineage, missing/blank warnings, a persistent workstation gate, and a sanitised public employee viewer.
 
-Included: application shell, upload orchestration, deterministic transformations, protected internal preview, synthetic public data, tests, CI/Pages definitions, version/build diagnostics, and carryover model only.
+Included: application shell, upload orchestration, deterministic transformations, protected internal/exception preview, fail-closed synthetic public data, tests, CI/Pages definitions, version/build diagnostics, and carryover model only. Product `ADMIN-0.1.1` and module `TIME-0.1.1` remain Sprint 0 prototypes, not production releases.
 
-Excluded: final invoicing/internal workbook exports, rates and financial decisions, production carryover, real publication, backend authentication, databases, telemetry, shared packages, and changes to TPT/DFT.
+Excluded: final invoicing/internal workbook exports, rates and financial decisions, production carryover, real-data publication, backend authentication, databases, telemetry, shared packages, and changes to TPT/DFT. Explicit Office Manager approval of genuine uncoded exceptions is deferred to Sprint 1; unresolved exceptions remain protected in Sprint 0.
 
 ## Dependencies and risks
 

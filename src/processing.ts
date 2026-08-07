@@ -332,7 +332,7 @@ export function toPublicDataset(
 ): PublicDataset {
   const projects = new Map<string, PublicDataset["projects"][number]>();
   for (const entry of entries.filter(
-    (item) => item.classification !== "internal",
+    (item) => item.classification === "project",
   )) {
     const key = entry.projectCode ?? `uncoded:${entry.description}`;
     const project = projects.get(key) ?? {

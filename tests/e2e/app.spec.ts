@@ -13,7 +13,8 @@ test("landing, public viewer and build information are available", async ({
     page.getByRole("heading", { name: "Station Access Study", exact: true }),
   ).toBeVisible();
   await expect(page.getByText(/Holiday|Sick Leave/)).toHaveCount(0);
-  await page.getByRole("button", { name: /ADMIN-0.1.0/ }).click();
+  await expect(page.getByText(/Uncoded · Awaiting project code/)).toBeVisible();
+  await page.getByRole("button", { name: /ADMIN-0.1.1/ }).click();
   await expect(page.getByText("Build information")).toBeVisible();
 });
 test("admin route gates, remembered state survives reload, and logout revokes it", async ({
