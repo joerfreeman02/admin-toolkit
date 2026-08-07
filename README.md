@@ -6,9 +6,10 @@ Sprint 0 foundation for the **Timesheet and Invoicing Hours** module. This stati
 
 ## Status and versions
 
-- Product `ADMIN-0.1.1`; module `TIME-0.1.1`; Sprint 0 corrective pass.
+- Product `ADMIN-0.1.1`; module `TIME-0.1.1`; Sprint 0 accepted and frozen baseline.
+- Accepted candidate `28af89cf60e8317e1465178a6f47a0cf65c8a191`, merged through PR #1 as `895984dd605774944aa5917ae115675b4cb0b66e`; release marker `sprint-0-admin-0.1.1-time-0.1.1`.
 - Build identity is injected from `GITHUB_SHA` (or `local-dev`).
-- Prototype only: supplied reference workbook structures and the Office Manager walkthrough were reviewed read-only; the staff layout and documented monthly sort/consolidate/carry-forward process are understood, while exact output replication still requires guided acceptance.
+- Product Owner manual acceptance passed for the Sprint 0 scope. Supplied reference workbook structures and the Office Manager walkthrough were reviewed read-only; no confidential source files or generated internal outputs form part of this baseline.
 - Live Sprint 0 acceptance URL: `https://joerfreeman02.github.io/admin-toolkit/`, deployed manually from the controlled Sprint branch with synthetic demonstration data only. Verify the footer build identity and GitHub Actions deployment SHA before each acceptance session.
 
 ## Local development
