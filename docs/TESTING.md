@@ -4,4 +4,4 @@ Vitest creates synthetic workbooks in memory and covers code/employee/month extr
 
 Commands: `pnpm lint`, `pnpm format:check`, `pnpm typecheck`, `pnpm test`, `pnpm test:coverage`, `pnpm exec playwright install chromium`, `pnpm test:e2e`, `pnpm build`, and `pnpm audit --prod`.
 
-Real workbook shape, cached formulas, Excel-specific rendering, Safari/Firefox, live Pages and positive token comparison remain unavailable until source/reference material, browser binaries and publishing credentials/configuration are available.
+The supplied workbook set and Office Manager walkthrough are available for read-only, anonymised acceptance checks. Cached-formula semantics, Excel-specific rendering and Safari/Firefox remain outside automated coverage. Live Pages and positive/negative token checks are publication acceptance activities and must not expose source filenames, workbook contents or the plain administrative token.

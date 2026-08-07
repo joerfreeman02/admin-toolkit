@@ -8,7 +8,7 @@ Sprint 0 foundation for the **Timesheet and Invoicing Hours** module. This stati
 
 - Product `ADMIN-0.1.0`; module `TIME-0.1.0`; Sprint 0.
 - Build identity is injected from `GITHUB_SHA` (or `local-dev`).
-- Prototype only: supplied reference workbook structures were inspected read-only and the staff layout is supported; business interpretation and exact output replication still require guided acceptance.
+- Prototype only: supplied reference workbook structures and the Office Manager walkthrough were reviewed read-only; the staff layout and documented monthly sort/consolidate/carry-forward process are understood, while exact output replication still requires guided acceptance.
 - Intended public URL: `https://joerfreeman02.github.io/admin-toolkit/` (not live or verified until publishing completes).
 
 ## Local development

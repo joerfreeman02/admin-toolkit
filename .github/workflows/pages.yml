@@ -21,6 +21,8 @@ jobs:
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
+        env:
+          VITE_ADMIN_TOKEN_SHA256: ${{ secrets.VITE_ADMIN_TOKEN_SHA256 }}
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with: { path: dist }
