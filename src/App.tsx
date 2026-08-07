@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { AdminProcessing } from "./AdminProcessing";
-import { demoData } from "./demo";
 import type { EmployeeRegister } from "./domain";
 import { loadEmployeeRegister, saveEmployeeRegister } from "./employeeRegister";
+import { PublicViewer } from "./PublicViewer";
 import creatorPortrait from "./assets/joe-freeman.png";
 import "./styles.css";
 
@@ -17,112 +17,6 @@ async function sha256(value: string) {
   return [...new Uint8Array(digest)]
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
-}
-
-function PublicViewer() {
-  const dataset = demoData[0];
-  const employees = [
-    ...new Set(
-      dataset.projects.flatMap((project) =>
-        project.contributors.map((item) => item.employee),
-      ),
-    ),
-  ];
-  const [employee, setEmployee] = useState(employees[0]);
-  const [selected, setSelected] = useState(
-    dataset.projects.find((project) =>
-      project.contributors.some((item) => item.employee === employee),
-    ),
-  );
-  const projects = dataset.projects.filter((project) =>
-    project.contributors.some((item) => item.employee === employee),
-  );
-  return (
-    <section className="panel" aria-labelledby="viewer-title">
-      <p className="eyebrow">Public area - synthetic data only</p>
-      <h2 id="viewer-title">Employee project-hours viewer</h2>
-      <div className="notice">
-        Sprint 1 does not publish real employee or project-hour information.
-        This viewer remains a fictional demonstration dataset.
-      </div>
-      <div className="controls">
-        <label>
-          Reporting month
-          <select value={dataset.month} disabled>
-            <option>{dataset.month}</option>
-          </select>
-        </label>
-        <label>
-          Employee
-          <select
-            value={employee}
-            onChange={(event) => {
-              const name = event.target.value;
-              setEmployee(name);
-              setSelected(
-                dataset.projects.find((project) =>
-                  project.contributors.some((item) => item.employee === name),
-                ),
-              );
-            }}
-          >
-            {employees.map((name) => (
-              <option key={name}>{name}</option>
-            ))}
-          </select>
-        </label>
-      </div>
-      <div className="split">
-        <div>
-          <h3>Projects worked</h3>
-          {projects.map((project) => (
-            <button
-              className="project-button"
-              key={project.code ?? project.description}
-              onClick={() => setSelected(project)}
-            >
-              <span>
-                {project.code ?? "Uncoded"} - {project.description}
-              </span>
-              <strong>
-                {project.contributors
-                  .find((item) => item.employee === employee)
-                  ?.hours.toFixed(2)}{" "}
-                hrs
-              </strong>
-            </button>
-          ))}
-        </div>
-        <div className="subpanel">
-          <h3>{selected?.description ?? "Select a project"}</h3>
-          {selected && (
-            <table>
-              <thead>
-                <tr>
-                  <th>Contributor</th>
-                  <th>Hours</th>
-                </tr>
-              </thead>
-              <tbody>
-                {selected.contributors.map((item) => (
-                  <tr key={item.employee}>
-                    <td>{item.employee}</td>
-                    <td>{item.hours.toFixed(2)}</td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr>
-                  <th>Project total</th>
-                  <th>{selected.total.toFixed(2)}</th>
-                </tr>
-              </tfoot>
-            </table>
-          )}
-        </div>
-      </div>
-    </section>
-  );
 }
 
 function AdminGate({ onAuthorise }: { onAuthorise: () => void }) {
@@ -219,7 +113,9 @@ function About() {
 }
 
 export default function App() {
-  const [view, setView] = useState<View>("home");
+  const [view, setView] = useState<View>(() =>
+    location.hash.startsWith("#employee-viewer=") ? "viewer" : "home",
+  );
   const [authorised, setAuthorised] = useState(
     localStorage.getItem(AUTH_KEY) === "true",
   );
@@ -227,6 +123,14 @@ export default function App() {
     loadEmployeeRegister(),
   );
   useEffect(() => saveEmployeeRegister(register), [register]);
+  useEffect(() => {
+    const openEmployeePublication = () => {
+      if (location.hash.startsWith("#employee-viewer=")) setView("viewer");
+    };
+    window.addEventListener("hashchange", openEmployeePublication);
+    return () =>
+      window.removeEventListener("hashchange", openEmployeePublication);
+  }, []);
   const nav = (target: View) => () => setView(target);
   const logout = () => {
     localStorage.removeItem(AUTH_KEY);

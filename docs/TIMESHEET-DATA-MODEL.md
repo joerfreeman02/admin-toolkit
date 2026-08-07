@@ -8,10 +8,12 @@ The parser also accepts a deliberately simple synthetic `Timesheet` table for de
 
 ## Operational records
 
-`TimeEntry` contains employee/source name, reporting month, optional project code, description, optional internal category, selected hours, optional daily breakdown, hours-authority audit, exactly one classification and source trace. Codes below the internal threshold are projects; configured internal codes/categories are internal; code 10001 (`Unknown Project`) and uncoded work remain exceptions.
+`TimeEntry` contains employee/source name, reporting month, optional project code, original description, optional internal category, selected hours, optional daily breakdown, hours-authority audit, exactly one classification, source trace and an optional explicit uncoded-review decision. Codes below the internal threshold are projects; configured internal codes/categories are internal; code 10001 (`Unknown Project`) and uncoded work remain exceptions. For uncoded rows the parser prioritises meaningful employee-entered detail over generic labels.
 
-An explicit approval may reclassify an individual exception row as an approved uncoded project. The immutable source trace supplies the review key. No bulk or automatic approval exists.
+An explicit decision may match an individual exception to a catalogue project or confirm a meaningfully named genuine uncoded project. The original description is never rewritten. The immutable source trace supplies the review key. Similarity suggestions are advisory; no bulk or automatic approval exists. Blank/generic identities remain exceptions and cannot be silently grouped.
 
 `ConsolidationResult` contains the effective employee snapshot, coded/approved-uncoded project rows, separate internal rows, unresolved exceptions, unknown employees, description conflicts and four-way totals. It may be exported only when its blocker list is empty. Coded projects sort numerically; approved uncoded projects sort last.
 
-The project workbook contains current-month project hours only. The internal workbook contains internal-category rows and a protected audit trace. Carryover remains schema-only/deferred and commercial fields are intentionally manual. `PublicDataset` remains synthetic project identity/contributor/total data and never contains operational source trace or internal categories.
+The project workbook contains current-month project hours only. The annual workbook provides structure and catalogue evidence, never current-month hour values. The internal workbook contains internal-category rows and a protected audit trace. Carryover remains schema-only/deferred and commercial fields are intentionally manual.
+
+`PublicDataset` contains only reporting month, approved project identity, contributor display identity/hours and project totals. The deployed demonstration instance is synthetic. An approved operational instance exists only inside an encrypted Employee Viewer package; it never contains internal categories, unresolved exceptions, source trace or register administration.

@@ -134,11 +134,13 @@ function parseEasMonthSheet(
     const unknownDescription = cellValue(row, 2);
     const descriptionFromCode =
       typeof rawDescription === "string" ? rawDescription.trim() : "";
+    const unknownText =
+      typeof unknownDescription === "string" ? unknownDescription.trim() : "";
+    const codeCellText =
+      !code && typeof rawCode === "string" ? rawCode.trim() : "";
     const description =
-      code === UNKNOWN_PROJECT_CODE &&
-      typeof unknownDescription === "string" &&
-      unknownDescription.trim()
-        ? unknownDescription.trim()
+      !code || code === UNKNOWN_PROJECT_CODE
+        ? unknownText || descriptionFromCode || codeCellText
         : descriptionFromCode;
     const totalValue = cellValue(row, 3);
     const dailyHours: Record<string, number> = {};

@@ -160,12 +160,28 @@ export function EmployeeRegisterPanel({ register, month, onChange }: Props) {
           <span className="step-number">2</span>
           <div>
             <p className="eyebrow">Protected workstation data</p>
-            <h3 id="employee-register-title">Confirm Employee Register</h3>
+            <h3 id="employee-register-title">Employee Register</h3>
           </div>
         </div>
+        <strong className="persistence-status">
+          {snapshots.filter((employee) => employee.active).length} employees ·
+          Saved on this workstation
+        </strong>
+      </div>
+      <p className="muted">
+        Import the starter register once, then add, edit, promote or deactivate
+        employees here. Changes persist automatically; no monthly re-import is
+        required. Effective months keep historical outputs interpretable.
+      </p>
+      <details className="backup-restore">
+        <summary>Backup &amp; restore</summary>
+        <p className="muted">
+          Download a backup before clearing browser storage or moving to a new
+          workstation. Restore that backup once on the replacement workstation.
+        </p>
         <div className="button-row">
           <label className="secondary-button file-button">
-            Import register
+            Restore backup
             <input
               aria-label="Import Employee Register"
               type="file"
@@ -178,14 +194,10 @@ export function EmployeeRegisterPanel({ register, month, onChange }: Props) {
             onClick={exportRegister}
             disabled={!register.employees.length}
           >
-            Export backup
+            Download backup
           </button>
         </div>
-      </div>
-      <p className="muted">
-        Employee records stay in this browser. Changes take effect from the
-        chosen month so historical outputs remain interpretable.
-      </p>
+      </details>
       {collisions.length > 0 && (
         <p className="error" role="alert">
           Abbreviation collision: {collisions.join(", ")}. Resolve before

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   applyUncodedApprovals,
+  applyUncodedDecisions,
   consolidateEntries,
   entryReviewKey,
 } from "../src/consolidation";
@@ -65,6 +66,122 @@ describe("classification review and consolidation", () => {
       classification: "project",
       approvedUncoded: true,
     });
+  });
+
+  it("matches an uncoded entry to an existing project only after an explicit decision", () => {
+    const uncoded = entry(
+      "Employee Alpha",
+      "Harbour Roud",
+      1.5,
+      "exception",
+      8,
+    );
+    const coded = entry(
+      "Employee Beta",
+      "Harbour Road Access",
+      2.5,
+      "project",
+      6,
+      "4312",
+    );
+    const reviewed = applyUncodedDecisions(
+      [uncoded, coded],
+      new Map([
+        [
+          entryReviewKey(uncoded),
+          {
+            kind: "existing-project" as const,
+            projectCode: "4312",
+            projectDescription: "Harbour Road Access",
+          },
+        ],
+      ]),
+    );
+    const result = consolidateEntries(reviewed, register(), "2026-07");
+
+    expect(reviewed[0].description).toBe("Harbour Roud");
+    expect(result.projects).toHaveLength(1);
+    expect(result.projects[0]).toMatchObject({
+      code: "4312",
+      description: "Harbour Road Access",
+      total: 4,
+    });
+    expect(result.canExport).toBe(true);
+  });
+
+  it("supports an alternative project choice and a deliberate genuine-uncoded decision", () => {
+    const first = entry(
+      "Employee Alpha",
+      "Ambiguous wording",
+      1,
+      "exception",
+      8,
+    );
+    const second = entry("Employee Beta", "New Pilot Study", 2, "exception", 9);
+    const reviewed = applyUncodedDecisions(
+      [first, second],
+      new Map([
+        [
+          entryReviewKey(first),
+          {
+            kind: "existing-project" as const,
+            projectCode: "5120",
+            projectDescription: "Riverside Survey",
+          },
+        ],
+        [
+          entryReviewKey(second),
+          {
+            kind: "genuine-uncoded" as const,
+            projectDescription: "New Pilot Study",
+          },
+        ],
+      ]),
+    );
+    const result = consolidateEntries(reviewed, register(), "2026-07");
+
+    expect(result.projects.map((project) => project.code ?? "uncoded")).toEqual(
+      ["5120", "uncoded"],
+    );
+    expect(result.canExport).toBe(true);
+  });
+
+  it("keeps unresolved or generic uncoded entries blocked and separate", () => {
+    const blank = entry("Employee Alpha", "Uncoded entry", 1, "exception", 8);
+    const unknown = entry(
+      "Employee Beta",
+      "Unknown Project",
+      2,
+      "exception",
+      9,
+    );
+    const reviewed = applyUncodedDecisions(
+      [blank, unknown],
+      new Map([
+        [
+          entryReviewKey(blank),
+          {
+            kind: "genuine-uncoded" as const,
+            projectDescription: "Uncoded entry",
+          },
+        ],
+        [
+          entryReviewKey(unknown),
+          {
+            kind: "genuine-uncoded" as const,
+            projectDescription: "Unknown Project",
+          },
+        ],
+      ]),
+    );
+    const result = consolidateEntries(reviewed, register(), "2026-07");
+
+    expect(
+      reviewed.every((value) => value.classification === "exception"),
+    ).toBe(true);
+    expect(result.projects).toEqual([]);
+    expect(result.unresolved).toHaveLength(2);
+    expect(result.canExport).toBe(false);
   });
 
   it("aggregates repeated rows for one employee and multiple employees", () => {
