@@ -1,7 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+import { AdminProcessing } from "./AdminProcessing";
 import { demoData } from "./demo";
-import type { ProcessingResult } from "./domain";
-import { processUploads, reconcile, toPublicDataset } from "./processing";
+import type { EmployeeRegister } from "./domain";
+import { loadEmployeeRegister, saveEmployeeRegister } from "./employeeRegister";
+import creatorPortrait from "./assets/joe-freeman.png";
 import "./styles.css";
 
 const AUTH_KEY = "eas-admin-authorised";
@@ -37,8 +39,12 @@ function PublicViewer() {
   );
   return (
     <section className="panel" aria-labelledby="viewer-title">
-      <p className="eyebrow">Public area · synthetic data only</p>
+      <p className="eyebrow">Public area - synthetic data only</p>
       <h2 id="viewer-title">Employee project-hours viewer</h2>
+      <div className="notice">
+        Sprint 1 does not publish real employee or project-hour information.
+        This viewer remains a fictional demonstration dataset.
+      </div>
       <div className="controls">
         <label>
           Reporting month
@@ -76,7 +82,7 @@ function PublicViewer() {
               onClick={() => setSelected(project)}
             >
               <span>
-                {project.code ?? "Uncoded"} · {project.description}
+                {project.code ?? "Uncoded"} - {project.description}
               </span>
               <strong>
                 {project.contributors
@@ -90,30 +96,28 @@ function PublicViewer() {
         <div className="subpanel">
           <h3>{selected?.description ?? "Select a project"}</h3>
           {selected && (
-            <>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Contributor</th>
-                    <th>Hours</th>
+            <table>
+              <thead>
+                <tr>
+                  <th>Contributor</th>
+                  <th>Hours</th>
+                </tr>
+              </thead>
+              <tbody>
+                {selected.contributors.map((item) => (
+                  <tr key={item.employee}>
+                    <td>{item.employee}</td>
+                    <td>{item.hours.toFixed(2)}</td>
                   </tr>
-                </thead>
-                <tbody>
-                  {selected.contributors.map((item) => (
-                    <tr key={item.employee}>
-                      <td>{item.employee}</td>
-                      <td>{item.hours.toFixed(2)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr>
-                    <th>Project total</th>
-                    <th>{selected.total.toFixed(2)}</th>
-                  </tr>
-                </tfoot>
-              </table>
-            </>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <th>Project total</th>
+                  <th>{selected.total.toFixed(2)}</th>
+                </tr>
+              </tfoot>
+            </table>
           )}
         </div>
       </div>
@@ -142,7 +146,7 @@ function AdminGate({ onAuthorise }: { onAuthorise: () => void }) {
   }
   return (
     <section className="panel gate">
-      <p className="eyebrow">Protected prototype</p>
+      <p className="eyebrow">Protected workstation workflow</p>
       <h2>Administrative access</h2>
       <p>
         This browser-only workstation gate is not server-grade authentication.
@@ -156,7 +160,7 @@ function AdminGate({ onAuthorise }: { onAuthorise: () => void }) {
             type="password"
             autoComplete="current-password"
             value={token}
-            onChange={(e) => setToken(e.target.value)}
+            onChange={(event) => setToken(event.target.value)}
           />
         </label>
         {error && (
@@ -170,210 +174,47 @@ function AdminGate({ onAuthorise }: { onAuthorise: () => void }) {
   );
 }
 
-function AdminProcessing({ logout }: { logout: () => void }) {
-  const [month, setMonth] = useState("2026-07");
-  const [files, setFiles] = useState<File[]>([]);
-  const [result, setResult] = useState<ProcessingResult>();
-  const [busy, setBusy] = useState(false);
-  const totals = useMemo(
-    () => (result ? reconcile(result.entries) : undefined),
-    [result],
-  );
-  const publicPreview = useMemo(
-    () => (result ? toPublicDataset(result.entries, month) : undefined),
-    [result, month],
-  );
-  async function run() {
-    setBusy(true);
-    try {
-      setResult(await processUploads(files, month));
-    } finally {
-      setBusy(false);
-    }
-  }
+function About() {
   return (
-    <section className="panel">
-      <div className="title-row">
+    <section className="panel about-page">
+      <p className="eyebrow">About the Toolkit</p>
+      <h2>Operational automation with professional control</h2>
+      <p>
+        Sprint 1 consolidates timesheets locally, separates confidential
+        internal hours, and generates controlled Excel outputs. Commercial
+        invoice, rate and carryover decisions remain outside this sprint.
+      </p>
+      <section className="creator-section" aria-labelledby="creator-title">
+        <img src={creatorPortrait} alt="Portrait of Joe Freeman" />
         <div>
-          <p className="eyebrow">Protected administrative area</p>
-          <h2>Timesheet processing</h2>
-        </div>
-        <button onClick={logout}>Logout / reset</button>
-      </div>
-      <div className="notice">
-        Timesheet files are processed locally in the browser. Do not publish or
-        commit confidential timesheet files or internal-hours outputs.
-      </div>
-      <div className="controls">
-        <label>
-          Reporting month
-          <input
-            type="month"
-            value={month}
-            onChange={(e) => setMonth(e.target.value)}
-          />
-        </label>
-        <label className="file-drop">
-          Timesheets or ZIP
-          <input
-            aria-label="Timesheets or ZIP"
-            type="file"
-            multiple
-            accept=".xlsx,.zip"
-            onChange={(e) => setFiles([...(e.target.files ?? [])])}
-          />
-        </label>
-        <button
-          className="primary"
-          disabled={!files.length || busy}
-          onClick={run}
-        >
-          {busy ? "Processing…" : "Process locally"}
-        </button>
-      </div>
-      {!!files.length && (
-        <div>
-          <h3>Files ready</h3>
-          <ul>
-            {files.map((file) => (
-              <li key={`${file.name}-${file.size}`}>
-                {file.name}{" "}
-                <button
-                  onClick={() =>
-                    setFiles(files.filter((item) => item !== file))
-                  }
-                >
-                  Remove
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-      {result && totals && (
-        <>
-          <div className="metrics">
-            <article>
-              <span>Files</span>
-              <strong>{result.filesSupplied}</strong>
-            </article>
-            <article>
-              <span>Employees</span>
-              <strong>{result.employees.length}</strong>
-            </article>
-            <article>
-              <span>Project</span>
-              <strong>{totals.project.toFixed(2)}</strong>
-            </article>
-            <article>
-              <span>Internal</span>
-              <strong>{totals.internal.toFixed(2)}</strong>
-            </article>
-            <article>
-              <span>Exceptions</span>
-              <strong>{totals.exception.toFixed(2)}</strong>
-            </article>
-            <article>
-              <span>Total</span>
-              <strong>{totals.total.toFixed(2)}</strong>
-            </article>
-          </div>
-          <p className={totals.reconciles ? "success" : "error"}>
-            Reconciliation: {totals.reconciles ? "passed" : "failed"}
+          <p className="eyebrow">Creator</p>
+          <h3 id="creator-title">Joe Freeman</h3>
+          <p className="creator-role">
+            Creator &amp; Product Owner — AI Engineering Toolkits
           </p>
-          {!!result.warnings.length && (
-            <div className="warning">
-              <h3>Non-blocking warnings</h3>
-              <ul>
-                {result.warnings.map((warning, i) => (
-                  <li key={i}>{warning}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {!!result.fatalErrors.length && (
-            <div className="error-box">
-              <h3>Fatal errors</h3>
-              <ul>
-                {result.fatalErrors.map((error, i) => (
-                  <li key={i}>{error}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-          <div className="split">
-            <div>
-              <h3>Project and exception preview</h3>
-              <EntryTable
-                entries={result.entries.filter(
-                  (entry) => entry.classification !== "internal",
-                )}
-              />
-            </div>
-            <div>
-              <h3>Protected internal-hours preview</h3>
-              <EntryTable
-                entries={result.entries.filter(
-                  (entry) => entry.classification === "internal",
-                )}
-              />
-            </div>
-          </div>
-          <details>
-            <summary>
-              Public sanitisation preview ({publicPreview?.projects.length ?? 0}{" "}
-              projects)
-            </summary>
-            <p>
-              Only coded project records enter this derived dataset. Internal
-              and unresolved exception records, including unknown uncoded work,
-              remain protected. Source filenames are excluded.
-            </p>
-          </details>
-        </>
-      )}
+          <p>
+            Joe Freeman conceived and leads the development of the EAS AI
+            Engineering Toolkits programme after identifying recurring
+            consultancy tasks that were repetitive, time-consuming and capable
+            of being improved through carefully controlled automation.
+          </p>
+          <p>
+            Beginning with the Transport Planner Toolkit, the programme has
+            expanded into drainage, flood risk and administrative workflows,
+            with the aim of creating practical software designed around the way
+            consultants actually work.
+          </p>
+          <p>
+            Joe defines the real-world workflows and product requirements,
+            directs the development programme and manually tests each release.
+            The Toolkits are intended to improve efficiency, consistency,
+            traceability and quality while keeping professional judgement at the
+            centre of the consultancy process.
+          </p>
+          <strong>Created by Joe Freeman · EAS AI Engineering Toolkits</strong>
+        </div>
+      </section>
     </section>
-  );
-}
-
-function EntryTable({ entries }: { entries: ProcessingResult["entries"] }) {
-  const sorted = [...entries].sort((a, b) =>
-    a.projectCode && b.projectCode
-      ? Number(a.projectCode) - Number(b.projectCode)
-      : a.projectCode
-        ? -1
-        : b.projectCode
-          ? 1
-          : 0,
-  );
-  return (
-    <div className="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Code</th>
-            <th>Description</th>
-            <th>Employee</th>
-            <th>Hours</th>
-            <th>Source trace</th>
-          </tr>
-        </thead>
-        <tbody>
-          {sorted.map((entry, i) => (
-            <tr key={i}>
-              <td>{entry.projectCode ?? "Uncoded"}</td>
-              <td>{entry.description}</td>
-              <td>{entry.employee}</td>
-              <td>{entry.hours.toFixed(2)}</td>
-              <td>
-                {entry.trace.file} · {entry.trace.worksheet} · row{" "}
-                {entry.trace.row}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
   );
 }
 
@@ -382,6 +223,10 @@ export default function App() {
   const [authorised, setAuthorised] = useState(
     localStorage.getItem(AUTH_KEY) === "true",
   );
+  const [register, setRegister] = useState<EmployeeRegister>(() =>
+    loadEmployeeRegister(),
+  );
+  useEffect(() => saveEmployeeRegister(register), [register]);
   const nav = (target: View) => () => setView(target);
   const logout = () => {
     localStorage.removeItem(AUTH_KEY);
@@ -408,25 +253,29 @@ export default function App() {
       <main>
         {view === "home" && (
           <section className="hero">
-            <p className="eyebrow">Sprint 0 · prototype foundation</p>
+            <p className="eyebrow">
+              Sprint 1 - operational development candidate
+            </p>
             <h1>
-              Controlled timesheet ingestion, with public data separated by
-              design.
+              Monthly timesheets consolidated with every hour accounted for.
             </h1>
             <p>
-              Process structurally representative workbooks locally, reconcile
-              every hour, and publish only an approved project-hours view.
+              Maintain an effective-dated Employee Register, review exceptions,
+              reconcile project and internal time, and generate separate Excel
+              workbooks without uploading confidential files.
             </p>
             <div className="cards">
-              <button onClick={nav("viewer")}>
-                <span>Public</span>
-                <strong>Employee viewer</strong>
-                <small>Synthetic project hours only</small>
-              </button>
               <button onClick={nav("admin")}>
                 <span>Protected</span>
-                <strong>Admin processing</strong>
-                <small>Local workbook classification</small>
+                <strong>Monthly consolidation</strong>
+                <small>
+                  Employee Register, review, reconciliation and Excel outputs
+                </small>
+              </button>
+              <button onClick={nav("viewer")}>
+                <span>Public</span>
+                <strong>Synthetic viewer</strong>
+                <small>No real employee or project-hour publication</small>
               </button>
             </div>
           </section>
@@ -434,42 +283,36 @@ export default function App() {
         {view === "viewer" && <PublicViewer />}
         {view === "admin" &&
           (authorised ? (
-            <AdminProcessing logout={logout} />
+            <AdminProcessing
+              logout={logout}
+              register={register}
+              onRegisterChange={setRegister}
+            />
           ) : (
             <AdminGate onAuthorise={() => setAuthorised(true)} />
           ))}
-        {view === "about" && (
-          <section className="panel">
-            <p className="eyebrow">About and limitations</p>
-            <h2>Prototype, not a production consolidator</h2>
-            <p>
-              Sprint 0 proves local parsing, classification, reconciliation and
-              strict public/internal separation with synthetic data. It does not
-              generate the final invoicing workbook, apply commercial decisions,
-              or provide server authentication.
-            </p>
-          </section>
-        )}
+        {view === "about" && <About />}
         {view === "diagnostics" && (
           <section className="panel">
             <h2>Build information</h2>
             <dl>
               <dt>Product</dt>
-              <dd>ADMIN-0.1.1</dd>
+              <dd>ADMIN-0.2.0</dd>
               <dt>Module</dt>
-              <dd>TIME-0.1.1</dd>
+              <dd>TIME-0.2.0</dd>
               <dt>Build</dt>
               <dd>{__BUILD_ID__}</dd>
               <dt>Sprint</dt>
-              <dd>Sprint 0</dd>
+              <dd>Sprint 1</dd>
             </dl>
           </section>
         )}
       </main>
       <footer>
         <button onClick={nav("diagnostics")}>
-          ADMIN-0.1.1 · TIME-0.1.1 · {__BUILD_ID__}
+          ADMIN-0.2.0 - TIME-0.2.0 - {__BUILD_ID__}
         </button>
+        <span>Created by Joe Freeman</span>
         <span>Files remain on this workstation.</span>
       </footer>
     </>

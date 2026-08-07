@@ -33,6 +33,8 @@ describe("classification and parsing", () => {
     expect(classify(undefined, "Holiday")).toBe("internal"));
   it("classifies codes at the configured threshold as internal", () =>
     expect(classify("10000", "Admin")).toBe("internal"));
+  it("keeps the configured unknown-project code as an exception", () =>
+    expect(classify("10001", "Unknown Project")).toBe("exception"));
   it("classifies uncoded project entries as exceptions", () =>
     expect(classify(undefined, "Awaiting code")).toBe("exception"));
   it("identifies employee and reporting month", () => {
@@ -126,6 +128,62 @@ describe("classification and parsing", () => {
       "exception",
     ]);
     expect(result.entries[1].dailyHours).toEqual({ "1": 1, "2": 1.5 });
+  });
+  it("uses the EAS timesheet filename instead of a template theme in C1", () => {
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.aoa_to_sheet([["Project Code", "Description"]]),
+      "Codes",
+    );
+    const rows: unknown[][] = Array.from({ length: 6 }, () => []);
+    rows[0][2] = "Pastel Rainbow";
+    rows[4] = [2101, "Study", "", 2, 1, 1];
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.aoa_to_sheet(rows),
+      "July 2026",
+    );
+    const data = XLSX.write(wb, {
+      bookType: "xlsx",
+      type: "array",
+    }) as ArrayBuffer;
+    const result = parseWorkbook(
+      data,
+      "Synthetic_Person_Timesheet 2026-27.xlsx",
+      "2026-07",
+    );
+    expect(result.employee).toBe("Synthetic Person");
+    expect(result.entries[0].employee).toBe("Synthetic Person");
+  });
+  it("retains numeric column D while auditing a daily-cell difference", () => {
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.aoa_to_sheet([["Project Code", "Description"]]),
+      "Codes",
+    );
+    const rows: unknown[][] = Array.from({ length: 6 }, () => []);
+    rows[0][2] = "Employee A";
+    rows[4] = [2101, "Study", "", 2.5, 1, 1];
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.aoa_to_sheet(rows),
+      "July 2026",
+    );
+    const data = XLSX.write(wb, {
+      bookType: "xlsx",
+      type: "array",
+    }) as ArrayBuffer;
+    const result = parseWorkbook(data, "synthetic.xlsx", "2026-07");
+    expect(result.entries[0].hours).toBe(2.5);
+    expect(result.entries[0].hoursAudit).toEqual({
+      columnD: 2.5,
+      dailyTotal: 2,
+      authority: "column-d",
+      differs: true,
+    });
+    expect(result.warnings[0]).toContain("column-D total differs");
   });
 });
 
@@ -256,6 +314,7 @@ describe("upload orchestration", () => {
         ),
       ],
       "2026-07",
+      ["Employee A", "Employee B", "Employee C"],
     );
     expect(result.entries).toHaveLength(1);
     expect(result.blankTimesheets).toEqual(["Employee B"]);

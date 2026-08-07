@@ -1,9 +1,9 @@
 import JSZip from "jszip";
 import * as XLSX from "xlsx";
 import {
-  EXPECTED_EMPLOYEES,
   INTERNAL_CATEGORY_NAMES,
   INTERNAL_CODE_MINIMUM,
+  UNKNOWN_PROJECT_CODE,
 } from "./config";
 import type {
   Classification,
@@ -42,6 +42,8 @@ export function classify(
   category = "",
 ): Classification {
   const normalized = (category || description).trim().toLowerCase();
+  if (code === UNKNOWN_PROJECT_CODE || normalized === "unknown project")
+    return "exception";
   if (
     INTERNAL_CATEGORY_NAMES.has(normalized) ||
     (code && Number(code) >= INTERNAL_CODE_MINIMUM)
@@ -69,11 +71,16 @@ function employeeFromFilename(file: string): string | undefined {
   const base = file
     .split(/[\\/]/)
     .at(-1)
-    ?.replace(/\.(xlsx|xlsm)$/i, "")
-    .replace(/\b(timesheet|time sheet)\b/gi, "")
-    .replace(/[-_]+/g, " ")
+    ?.replace(/\.(xlsx|xlsm)$/i, "");
+  const normalizedBase = base?.replace(/[-_]+/g, " ");
+  if (!normalizedBase || !/\b(time\s*sheet)\b/i.test(normalizedBase))
+    return undefined;
+  const employee = normalizedBase
+    .replace(/\b(time\s*sheet)\b/gi, "")
+    .replace(/\b(?:19|20)?\d{2}\b/g, "")
+    .replace(/\s+/g, " ")
     .trim();
-  return base || undefined;
+  return employee || undefined;
 }
 
 function findEasMonthSheet(
@@ -114,17 +121,25 @@ function parseEasMonthSheet(
     sheet[XLSX.utils.encode_cell({ r: row, c: column })]?.v;
   const employeeCell = cellValue(0, 2);
   const employee =
-    typeof employeeCell === "string" && employeeCell.trim()
+    employeeFromFilename(file) ??
+    (typeof employeeCell === "string" && employeeCell.trim()
       ? employeeCell.trim()
-      : employeeFromFilename(file);
+      : undefined);
   const entries: TimeEntry[] = [];
   const warnings: string[] = [];
   for (let row = 4; row <= range.e.r; row++) {
     const rawCode = cellValue(row, 0);
     const code = extractProjectCode(rawCode);
     const rawDescription = cellValue(row, 1);
-    const description =
+    const unknownDescription = cellValue(row, 2);
+    const descriptionFromCode =
       typeof rawDescription === "string" ? rawDescription.trim() : "";
+    const description =
+      code === UNKNOWN_PROJECT_CODE &&
+      typeof unknownDescription === "string" &&
+      unknownDescription.trim()
+        ? unknownDescription.trim()
+        : descriptionFromCode;
     const totalValue = cellValue(row, 3);
     const dailyHours: Record<string, number> = {};
     let dailyTotal = 0;
@@ -135,20 +150,20 @@ function parseEasMonthSheet(
         dailyTotal += value;
       }
     }
-    const hours =
-      typeof totalValue === "number" && Number.isFinite(totalValue)
-        ? totalValue
-        : dailyTotal;
+    const hasNumericColumnD =
+      typeof totalValue === "number" && Number.isFinite(totalValue);
+    const hours = hasNumericColumnD ? totalValue : dailyTotal;
     if (!code && !description && hours === 0) continue;
     if (!Number.isFinite(hours) || hours < 0) {
       warnings.push(`${file} row ${row + 1}: invalid hours`);
       continue;
     }
-    if (Math.abs(hours - dailyTotal) > 0.01 && dailyTotal !== 0)
+    const differs = Math.abs(hours - dailyTotal) > 0.01 && dailyTotal !== 0;
+    if (differs)
       warnings.push(
-        `${file} row ${row + 1}: monthly total differs from daily hours`,
+        `${file} row ${row + 1}: column-D total differs from daily hours; column D retained for audit-consistent processing`,
       );
-    if (hours === 0) continue;
+    if (hours === 0 && dailyTotal === 0) continue;
     const trace: SourceTrace = { file, worksheet: sheetName, row: row + 1 };
     entries.push({
       employee: employee ?? "Unidentified employee",
@@ -161,6 +176,12 @@ function parseEasMonthSheet(
           : undefined,
       hours,
       dailyHours,
+      hoursAudit: {
+        columnD: hasNumericColumnD ? totalValue : undefined,
+        dailyTotal,
+        authority: hasNumericColumnD ? "column-d" : "daily-sum",
+        differs,
+      },
       classification: classify(code, description),
       trace,
     });
@@ -216,6 +237,12 @@ export function parseWorkbook(
       description: description || category || "Unspecified entry",
       internalCategory: category || undefined,
       hours,
+      hoursAudit: {
+        columnD: hours,
+        dailyTotal: hours,
+        authority: "tabular-total",
+        differs: false,
+      },
       classification: classify(code, description, category),
       trace,
     });
@@ -258,7 +285,7 @@ export async function expandUploads(
 export async function processUploads(
   files: File[],
   month: string,
-  expected = EXPECTED_EMPLOYEES,
+  expected: string[] = [],
 ): Promise<ProcessingResult> {
   const expanded = await expandUploads(files);
   const names = new Set<string>();

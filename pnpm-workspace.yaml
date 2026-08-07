@@ -1,3 +1,5 @@
 allowBuilds:
   esbuild: true
 verifyDepsBeforeRun: false
+overrides:
+  "exceljs>uuid": 11.1.1
