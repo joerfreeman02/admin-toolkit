@@ -1,15 +1,20 @@
-# TIME-DATA-001 — Monthly total versus daily-cell source-of-truth
+# TIME-DATA-001 - Monthly total source of truth
 
-Status: open; must be resolved before generated invoicing workbooks are accepted.
+Status: resolved for Sprint 1, with a documented limitation.
 
-## Anonymised Sprint 0 evidence
+## Investigation
 
-The supplied 22-workbook timesheet archive and completed monthly project-hours reference were inspected read-only. For the tested July 2026 parsing path, 49 rows reported a difference between the numeric value in column D and the mathematical sum of the non-zero daily/data cells from column E onward: one row came from one staff workbook and 48 rows came from the completed monthly reference.
+The supplied current-period individual timesheets were compared locally against the supplied monthly project-hours reference/manual output for three months. Two deterministic candidates were evaluated: the stored numeric total in column D and the calculated sum of daily cells from column E onwards. Comparisons were performed by anonymised month, project code and employee abbreviation; no identity, project description, filename or hour value is retained here. The reference workbook's formal completed/closed status was not independently proven.
 
-All 49 affected column-D cells were stored numeric constants, not formula cells. SheetJS therefore read their stored numeric values directly; it was not reading cached formula results for these affected cells. A full recalculation and save of private temporary copies in Microsoft Excel changed zero affected column-D values and left all 49 differences present. No confidential values, identities, project names or filenames were retained in this record.
+For every cell present in both the source set and the supplied manual output, the numeric column-D rule reproduced the manual value. In the one source row where column D and the daily sum differed, the manual output matched column D and did not match the daily sum. Differences outside the overlap were manual omissions/additions, not competing values for the same populated cell. July was treated as the primary reference/manual-output comparison; May and June supplied supporting overlap evidence.
 
-The current parser selects the finite numeric column-D value when present and uses the daily-cell sum only when column D is absent or non-numeric. It emits a non-blocking warning when both exist and differ by more than 0.01. Sprint 0 intentionally does not change that source-of-truth rule.
+The historical 2025-26 workbook was inspected for layout and operational conventions only. Without its matching individual timesheets it cannot independently validate column D, so it is not part of the TIME-DATA-001 value evidence.
 
-## Required Sprint 1 decision
+## Implemented rule
 
-The Office Manager and Technical Director must decide whether column D, the daily-cell sum, or an explicit validation/approval result is authoritative for invoicing. Acceptance criteria must cover formulas versus constants, workbook recalculation state, tolerance/rounding, blank days, and exception handling before any generated invoicing workbook is approved.
+1. Use column D when it is a finite numeric value, including zero.
+2. Fall back to the sum of daily cells only when column D is unavailable or non-numeric.
+3. Preserve both values and the selected authority in the parsed audit record.
+4. Warn whenever both are available and differ by more than 0.01 hours.
+
+This rule is deterministic and reproduces the observed reference/manual-output convention. It does not claim that column D is intrinsically more accurate than the underlying daily entries, nor that the supplied reference was formally closed; it preserves the evidenced administrative comparison rule. Any future business decision to recalculate from daily cells requires a controlled rule change and new acceptance evidence.
