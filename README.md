@@ -36,4 +36,4 @@ The protected flow is: select month, load/confirm the Employee Register, select 
 
 React and Vite provide the static application. SheetJS parses workbooks locally, JSZip expands uploads, Zod validates boundary data, and ExcelJS generates styled XLSX output. ExcelJS is dynamically loaded only for export; pnpm overrides its vulnerable transitive `uuid` release to patched `11.1.1`. The production dependency audit is clean at candidate preparation.
 
-See [Sprint 1 scope](docs/SPRINT-1-SCOPE.md), [architecture](docs/ARCHITECTURE.md), [Employee Register](docs/EMPLOYEE-REGISTER.md), [testing](docs/TESTING.md), [security](docs/CONFIDENTIALITY-AND-SECURITY.md), [TIME-DATA-001](docs/TIME-DATA-001.md), and the [manual acceptance script](docs/SPRINT-1-MANUAL-ACCEPTANCE.md).
+See [Sprint 1 scope](docs/SPRINT-1-SCOPE.md), [architecture](docs/ARCHITECTURE.md), [Employee Register](docs/EMPLOYEE-REGISTER.md), [testing](docs/TESTING.md), [security](docs/CONFIDENTIALITY-AND-SECURITY.md), [TIME-DATA-001](docs/TIME-DATA-001.md), the [historical workbook review](docs/SPRINT-1-HISTORICAL-WORKBOOK-REVIEW.md), and the [manual acceptance script](docs/SPRINT-1-MANUAL-ACCEPTANCE.md).

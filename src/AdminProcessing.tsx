@@ -142,6 +142,9 @@ export function AdminProcessing({ logout, register, onRegisterChange }: Props) {
   const [template, setTemplate] = useState<File>();
   const [result, setResult] = useState<ProcessingResult>();
   const [approvals, setApprovals] = useState<Set<string>>(new Set());
+  const [descriptionResolutions, setDescriptionResolutions] = useState<
+    Record<string, string>
+  >({});
   const [busy, setBusy] = useState(false);
   const [exporting, setExporting] = useState<"project" | "internal">();
   const [message, setMessage] = useState("");
@@ -156,8 +159,14 @@ export function AdminProcessing({ logout, register, onRegisterChange }: Props) {
     [result],
   );
   const consolidated = useMemo(
-    () => consolidateEntries(reviewedEntries, register, month),
-    [reviewedEntries, register, month],
+    () =>
+      consolidateEntries(
+        reviewedEntries,
+        register,
+        month,
+        new Map(Object.entries(descriptionResolutions)),
+      ),
+    [reviewedEntries, register, month, descriptionResolutions],
   );
   const missingEmployees = useMemo(
     () =>
@@ -171,6 +180,7 @@ export function AdminProcessing({ logout, register, onRegisterChange }: Props) {
     setBusy(true);
     setMessage("");
     setApprovals(new Set());
+    setDescriptionResolutions({});
     try {
       setResult(await processUploads(files, month));
     } finally {
@@ -424,16 +434,71 @@ export function AdminProcessing({ logout, register, onRegisterChange }: Props) {
               </div>
             )}
             {!!consolidated.descriptionConflicts.length && (
-              <div className="error-box">
-                <h4>Conflicting project descriptions</h4>
-                <ul>
-                  {consolidated.descriptionConflicts.map((conflict) => (
-                    <li key={conflict.projectCode}>
-                      Project {conflict.projectCode}:{" "}
-                      {conflict.descriptions.join(" / ")}
-                    </li>
-                  ))}
-                </ul>
+              <div className="description-conflicts">
+                <h4>Resolve conflicting project descriptions</h4>
+                <p>
+                  Select the canonical description for this processing run.
+                  Source records remain unchanged and are retained in the
+                  protected audit workbook.
+                </p>
+                {consolidated.descriptionConflicts.map((conflict) => (
+                  <article
+                    className={`resolution-card conflict-resolution ${
+                      conflict.resolved ? "resolved" : "unresolved"
+                    }`}
+                    key={conflict.projectCode}
+                  >
+                    <div className="conflict-heading">
+                      <strong>Project {conflict.projectCode}</strong>
+                      <span>
+                        {conflict.resolved ? "Resolved" : "Export blocker"}
+                      </span>
+                    </div>
+                    <label>
+                      Canonical description
+                      <select
+                        aria-label={`Canonical description for project ${conflict.projectCode}`}
+                        value={
+                          descriptionResolutions[conflict.projectCode] ?? ""
+                        }
+                        onChange={(event) =>
+                          setDescriptionResolutions((current) => ({
+                            ...current,
+                            [conflict.projectCode]: event.target.value,
+                          }))
+                        }
+                      >
+                        <option value="">Select an observed description</option>
+                        {conflict.descriptions.map((description) => (
+                          <option key={description} value={description}>
+                            {description}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <details>
+                      <summary>Protected source context</summary>
+                      {conflict.sources.map((source) => (
+                        <div
+                          className="conflict-source"
+                          key={source.description}
+                        >
+                          <strong>{source.description}</strong>
+                          <ul>
+                            {source.traces.map((trace) => (
+                              <li
+                                key={`${trace.file}|${trace.worksheet}|${trace.row}`}
+                              >
+                                {trace.file} - {trace.worksheet}, row{" "}
+                                {trace.row}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ))}
+                    </details>
+                  </article>
+                ))}
               </div>
             )}
           </section>

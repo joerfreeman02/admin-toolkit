@@ -116,10 +116,76 @@ describe("classification review and consolidation", () => {
       register(),
       "2026-07",
     );
-    expect(result.descriptionConflicts).toEqual([
-      { projectCode: "2101", descriptions: ["Study A", "Study B"] },
+    expect(result.descriptionConflicts).toMatchObject([
+      {
+        projectCode: "2101",
+        descriptions: ["Study A", "Study B"],
+        resolved: false,
+      },
+    ]);
+    expect(result.descriptionConflicts[0].sources).toEqual([
+      {
+        description: "Study A",
+        traces: [{ file: "Employee Alpha.xlsx", worksheet: "Jul 26", row: 5 }],
+      },
+      {
+        description: "Study B",
+        traces: [{ file: "Employee Beta.xlsx", worksheet: "Jul 26", row: 5 }],
+      },
     ]);
     expect(result.canExport).toBe(false);
+  });
+
+  it("uses deliberate observed choices while preserving all hours and blocking any second unresolved conflict", () => {
+    const entries = [
+      entry("Employee Alpha", "Study A", 1, "project", 5, "2101"),
+      entry("Employee Beta", "Study B", 2, "project", 5, "2101"),
+      entry("Employee Alpha", "Design A", 3, "project", 6, "2102"),
+      entry("Employee Beta", "Design B", 4, "project", 6, "2102"),
+    ];
+    const oneResolved = consolidateEntries(
+      entries,
+      register(),
+      "2026-07",
+      new Map([["2101", "Study B"]]),
+    );
+    expect(
+      oneResolved.projects.find((project) => project.code === "2101"),
+    ).toMatchObject({
+      description: "Study B",
+      total: 3,
+    });
+    expect(oneResolved.descriptionConflicts).toMatchObject([
+      { projectCode: "2101", canonicalDescription: "Study B", resolved: true },
+      { projectCode: "2102", resolved: false },
+    ]);
+    expect(oneResolved.canExport).toBe(false);
+
+    const allResolved = consolidateEntries(
+      entries,
+      register(),
+      "2026-07",
+      new Map([
+        ["2101", "Study B"],
+        ["2102", "Design A"],
+      ]),
+    );
+    expect(allResolved.projectHours).toBe(10);
+    expect(allResolved.projects.map((project) => project.description)).toEqual([
+      "Study B",
+      "Design A",
+    ]);
+    expect(allResolved.canExport).toBe(true);
+    expect(allResolved.blockers).toEqual([]);
+
+    const customAttempt = consolidateEntries(
+      entries.slice(0, 2),
+      register(),
+      "2026-07",
+      new Map([["2101", "Unobserved automatic label"]]),
+    );
+    expect(customAttempt.descriptionConflicts[0].resolved).toBe(false);
+    expect(customAttempt.canExport).toBe(false);
   });
 
   it("keeps internal hours in a separate aggregation", () => {

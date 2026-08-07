@@ -11,10 +11,13 @@ Use synthetic files first. Use real files only on the authorised workstation and
 7. Select a month and master/template, upload synthetic ZIP/XLSX files, and confirm source filenames/rows appear only in the protected review.
 8. Confirm coded projects aggregate by code and employee, numeric project ordering is correct, internal rows are separate, and repeated rows consolidate.
 9. Confirm an uncoded/unknown-project row blocks export until explicitly approved as a genuine uncoded project; confirm an unapproved row never enters output.
-10. Confirm conflicting descriptions, unknown employees, abbreviation collisions and failed reconciliation block export.
-11. Confirm imported = project + internal + exception and review any TIME-DATA warning showing retained column-D and daily totals.
-12. Generate both workbooks from a fully resolved synthetic run. Open them in Excel and verify layout, employee order, legend colours, totals, confidential marking and audit trace. Carry/notes must remain blank/manual.
-13. For authorised real-file acceptance, review each exception and description conflict explicitly. Do not bulk approve. Confirm export remains blocked until all decisions are recorded.
-14. Confirm the public deployment/bundle contains only synthetic data and no Office files, outputs, registers, plaintext credentials or internal hours.
+10. Create two observed descriptions for one synthetic project code. Confirm the protected resolver shows the code, both descriptions and source file/sheet/row context, and that export is initially blocked.
+11. Select one observed description as canonical. Confirm all hours remain under the single code, only the canonical description enters the project preview/output, and both originals plus the decision remain in the protected audit. Automatic/fuzzy choices are not permitted.
+12. Create a second conflict. Resolve only the first and confirm the second still blocks; resolve both and confirm the conflict blocker clears when no other blocker remains.
+13. Confirm unknown employees, abbreviation collisions and failed reconciliation block export.
+14. Confirm imported = project + internal + exception and review any TIME-DATA warning showing retained column-D and daily totals.
+15. Generate both workbooks from a fully resolved synthetic run. Open them in native Excel and verify layout, employee order, legend colours, totals, confidential marking and audit trace. Carry/notes must remain blank/manual.
+16. For authorised real-file acceptance, review each exception and description conflict explicitly. Do not bulk approve. Confirm export remains blocked until all decisions are recorded.
+17. Confirm the public deployment/bundle contains only synthetic data and no Office files, outputs, registers, conflict source context, plaintext credentials or internal hours.
 
 Record pass/fail evidence without employee names, project names, filenames or hour values. Do not merge the draft PR during this script.

@@ -176,6 +176,59 @@ describe("Excel outputs", () => {
     expect(values).not.toContain("Training");
   });
 
+  it("exports only the selected canonical description and retains original descriptions in the protected audit", async () => {
+    const entries = [
+      entry("Employee Alpha", "Study A", 1, "project", 5, "2101"),
+      entry("Employee Beta", "Study B", 2, "project", 5, "2101"),
+    ];
+    const employeeRegister = register();
+    const result = consolidateEntries(
+      entries,
+      employeeRegister,
+      "2026-07",
+      new Map([["2101", "Study B"]]),
+    );
+    expect(result.canExport).toBe(true);
+
+    const projectWorkbook = new ExcelJS.Workbook();
+    await projectWorkbook.xlsx.load(
+      new Uint8Array(
+        await generateProjectWorkbook(result, await template(), "test-sha"),
+      ) as never,
+    );
+    const projectSheet = projectWorkbook.getWorksheet("Jul 26")!;
+    expect(projectSheet.getCell("C11").value).toBe("Study B");
+    const projectValues: unknown[] = [];
+    projectSheet.eachRow((row) =>
+      row.eachCell((cell) => projectValues.push(cell.value)),
+    );
+    expect(projectValues).not.toContain("Study A");
+
+    const internalWorkbook = new ExcelJS.Workbook();
+    await internalWorkbook.xlsx.load(
+      new Uint8Array(
+        await generateInternalWorkbook(
+          result,
+          entries,
+          employeeRegister,
+          "test-sha",
+        ),
+      ) as never,
+    );
+    const audit = internalWorkbook.getWorksheet("Audit Trace")!;
+    expect([audit.getCell("G2").value, audit.getCell("G3").value]).toEqual([
+      "Study A",
+      "Study B",
+    ]);
+    expect([audit.getCell("H2").value, audit.getCell("H3").value]).toEqual([
+      "Study B",
+      "Study B",
+    ]);
+    expect(audit.getCell("I2").value).toBe(
+      "Resolved to observed source description",
+    );
+  });
+
   it("honours a template whose project header begins on row 8", async () => {
     const run = acceptedRun();
     const workbook = new ExcelJS.Workbook();
@@ -213,6 +266,8 @@ describe("Excel outputs", () => {
     const audit = workbook.getWorksheet("Audit Trace")!;
     expect(audit.getCell("A1").value).toBe("Source file");
     expect(audit.rowCount).toBeGreaterThan(2);
+    expect(audit.getCell("H5").value).toBeNull();
+    expect(audit.getCell("I5").value).toBeNull();
   });
 
   it("blocks workbook generation while exceptions remain unresolved", async () => {

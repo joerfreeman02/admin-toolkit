@@ -14,3 +14,5 @@ Output ordering is deterministic:
 Consultant maps to Engineer; Senior Consultant to Senior Engineer; Principal Consultant to Principal Engineer; Graduate Consultant and approved Technician equivalents map to Graduate Engineer / Senior Technician. No other equivalences are invented.
 
 Source names resolve against full names and aliases. A missing identity blocks export and opens the create/match workflow. New employees default after existing employees in the same department/grade band. Abbreviation collisions are shown and block export. The UI supports add, edit, future assignment change, deactivate, alias management and local JSON import/export.
+
+The Sprint 1 corrective pass produced and import-tested a confidential 22-record starter register in an approved private operational location outside this repository. It includes the authorised name corrections, abbreviations, consultant/engineer grade mappings and current same-band ordering. The file remains operational input: do not copy it into Git, CI artifacts, Pages or screenshots.

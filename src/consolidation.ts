@@ -50,11 +50,12 @@ export function consolidateEntries(
   entries: TimeEntry[],
   register: EmployeeRegister,
   month: string,
+  descriptionResolutions: ReadonlyMap<string, string> = new Map(),
 ): ConsolidationResult {
   const employees = employeeSnapshot(register, month);
   const projects = new Map<string, ProjectConsolidationRow>();
   const internal = new Map<string, InternalConsolidationRow>();
-  const descriptions = new Map<string, Set<string>>();
+  const descriptions = new Map<string, Map<string, TimeEntry["trace"][]>>();
   const unknownEmployees = new Set<string>();
   const unresolved = entries.filter(
     (entry) => entry.classification === "exception",
@@ -85,9 +86,13 @@ export function consolidateEntries(
       row.traces.push(entry.trace);
       projects.set(key, row);
       if (!entry.approvedUncoded && entry.projectCode) {
-        const set = descriptions.get(entry.projectCode) ?? new Set<string>();
-        set.add(entry.description.trim());
-        descriptions.set(entry.projectCode, set);
+        const values = descriptions.get(entry.projectCode) ?? new Map();
+        const description = entry.description.trim();
+        values.set(description, [
+          ...(values.get(description) ?? []),
+          entry.trace,
+        ]);
+        descriptions.set(entry.projectCode, values);
       }
     } else if (entry.classification === "internal") {
       const key = entry.projectCode
@@ -111,13 +116,29 @@ export function consolidateEntries(
 
   const descriptionConflicts = [...descriptions.entries()]
     .filter(([, values]) => {
-      const normalized = new Set([...values].map(normalise));
+      const normalized = new Set([...values.keys()].map(normalise));
       return normalized.size > 1;
     })
-    .map(([projectCode, values]) => ({
-      projectCode,
-      descriptions: [...values].sort(),
-    }));
+    .map(([projectCode, values]) => {
+      const observed = [...values.keys()].sort();
+      const selected = descriptionResolutions.get(projectCode);
+      const canonicalDescription =
+        selected && observed.includes(selected) ? selected : undefined;
+      if (canonicalDescription) {
+        const project = projects.get(`code:${projectCode}`);
+        if (project) project.description = canonicalDescription;
+      }
+      return {
+        projectCode,
+        descriptions: observed,
+        sources: observed.map((description) => ({
+          description,
+          traces: values.get(description) ?? [],
+        })),
+        canonicalDescription,
+        resolved: !!canonicalDescription,
+      };
+    });
   const totals = reconcile(entries);
   const blockers: string[] = [];
   if (!totals.reconciles) blockers.push("Hours do not reconcile.");
@@ -127,7 +148,7 @@ export function consolidateEntries(
     );
   if (unresolved.length)
     blockers.push("Unresolved exceptions must be reviewed before export.");
-  if (descriptionConflicts.length)
+  if (descriptionConflicts.some((conflict) => !conflict.resolved))
     blockers.push("Conflicting project descriptions must be resolved.");
   const collisions = abbreviationCollisions(register, month);
   if (collisions.length)

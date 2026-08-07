@@ -299,6 +299,44 @@ main {
 .resolution-card > p {
   font-size: 1.05rem;
 }
+.description-conflicts {
+  margin-top: 1rem;
+}
+.description-conflicts > p {
+  color: var(--muted);
+}
+.conflict-resolution {
+  border-left: 4px solid #a33b20;
+  margin-top: 0.75rem;
+}
+.conflict-resolution.resolved {
+  border-left-color: #2f6f4e;
+}
+.conflict-heading {
+  align-items: center;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  margin-bottom: 0.8rem;
+}
+.conflict-heading span {
+  background: #f8ded5;
+  border-radius: 999px;
+  color: #7f2d17;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 0.25rem 0.55rem;
+}
+.conflict-resolution.resolved .conflict-heading span {
+  background: #dfeee6;
+  color: #1f5b3d;
+}
+.conflict-source {
+  margin-top: 0.7rem;
+}
+.conflict-source ul {
+  margin-bottom: 0;
+}
 .compact-form {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }

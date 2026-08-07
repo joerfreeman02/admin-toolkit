@@ -133,6 +133,12 @@ export interface InternalConsolidationRow {
 export interface DescriptionConflict {
   projectCode: string;
   descriptions: string[];
+  sources: {
+    description: string;
+    traces: SourceTrace[];
+  }[];
+  canonicalDescription?: string;
+  resolved: boolean;
 }
 
 export interface ConsolidationResult {

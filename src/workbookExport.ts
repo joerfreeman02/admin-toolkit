@@ -424,7 +424,9 @@ export async function generateInternalWorkbook(
     "Employee",
     "Employee abbreviation",
     "Original code",
-    "Description",
+    "Original description",
+    "Canonical project description",
+    "Description decision",
     "Column-D / source hours",
     "Daily-cell sum",
     "Variance",
@@ -436,6 +438,11 @@ export async function generateInternalWorkbook(
   audit.views = [{ state: "frozen", ySplit: 1, topLeftCell: "A2" }];
   entries.forEach((entry, index) => {
     const employee = resolveEmployee(register, result.month, entry.employee);
+    const descriptionDecision = entry.projectCode
+      ? result.descriptionConflicts.find(
+          (conflict) => conflict.projectCode === entry.projectCode,
+        )
+      : undefined;
     const destination =
       entry.classification === "internal"
         ? "Internal Hours workbook"
@@ -448,8 +455,14 @@ export async function generateInternalWorkbook(
       entry.trace.row,
       entry.employee,
       employee?.abbreviation ?? "Unresolved",
-      entry.projectCode ?? "",
+      entry.projectCode ?? null,
       entry.description,
+      descriptionDecision?.canonicalDescription ?? null,
+      descriptionDecision?.resolved
+        ? "Resolved to observed source description"
+        : descriptionDecision
+          ? "Unresolved conflict"
+          : null,
       entry.hoursAudit?.columnD ?? entry.hours,
       entry.hoursAudit?.dailyTotal ?? entry.hours,
       (entry.hoursAudit?.columnD ?? entry.hours) -
@@ -458,12 +471,12 @@ export async function generateInternalWorkbook(
       destination,
     ];
   });
-  [24, 18, 11, 24, 18, 14, 34, 18, 16, 12, 24, 27].forEach(
+  [24, 18, 11, 24, 18, 14, 34, 34, 30, 18, 16, 12, 24, 27].forEach(
     (width, index) => (audit.getColumn(index + 1).width = width),
   );
-  audit.getColumn(8).numFmt = "0.00";
-  audit.getColumn(9).numFmt = "0.00";
   audit.getColumn(10).numFmt = "0.00";
+  audit.getColumn(11).numFmt = "0.00";
+  audit.getColumn(12).numFmt = "0.00";
   audit.autoFilter = {
     from: { row: 1, column: 1 },
     to: { row: 1, column: auditHeaders.length },
