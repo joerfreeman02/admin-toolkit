@@ -6,8 +6,8 @@ Browser-local administrative tooling for controlled timesheet processing. The Sp
 
 ## Status and versions
 
-- Development candidate: product `ADMIN-0.2.0`, module `TIME-0.2.0`, branch `sprint-1/monthly-consolidation`.
-- Sprint 1 is not accepted, released or merged. It is ready for Technical Director review and Product Owner manual acceptance through a draft PR.
+- Controlled acceptance candidate: product `ADMIN-0.2.0`, module `TIME-0.2.0`.
+- Technical Director review has passed. Sprint 1 remains awaiting Product Owner manual acceptance and is not an accepted or frozen baseline.
 - The accepted Sprint 0 baseline remains frozen at main SHA `d575ab58957aedf15b68f780ebe5bdddb84f0175` and tag `sprint-0-admin-0.1.1-time-0.1.1`.
 - Build identity comes from `GITHUB_SHA`, falling back to `local-dev`.
 - The public viewer contains synthetic demonstration data only.

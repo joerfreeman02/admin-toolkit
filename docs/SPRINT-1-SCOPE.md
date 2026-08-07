@@ -1,6 +1,6 @@
 # Sprint 1 scope
 
-Version: `ADMIN-0.2.0 / TIME-0.2.0`. Status: development candidate, not accepted or merged.
+Version: `ADMIN-0.2.0 / TIME-0.2.0`. Status: controlled acceptance candidate, not accepted or frozen.
 
 ## Included
 

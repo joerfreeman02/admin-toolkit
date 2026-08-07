@@ -27,3 +27,7 @@ Synthetic employee/project data then exercised deliberate resolution of one and 
 `pnpm lint`, `pnpm format:check`, `pnpm typecheck`, `pnpm test`, `pnpm test:coverage`, `pnpm test:e2e`, `pnpm build`, and `pnpm audit --prod`.
 
 Live token checks and Office Manager decisions on unresolved real exceptions/conflicts remain Product Owner manual acceptance activities.
+
+## Product Owner acceptance access
+
+A substantive acceptance handover should make the reviewed candidate available through the normal stable Toolkit test URL wherever technically appropriate. The Product Owner must not normally be asked to run a localhost development server, select a deployment branch, troubleshoot GitHub Actions, or administer the repository/deployment simply to reach an acceptance candidate.

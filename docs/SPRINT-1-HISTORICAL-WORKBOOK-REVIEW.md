@@ -4,7 +4,7 @@
 
 The supplied historical Hours for Invoicing workbook was copied to a private non-repository QA workspace, imported read-only and rendered sheet by sheet. This record is deliberately anonymised: it contains no employee, project, filename or hour data.
 
-The filename suggests May 2025 to April 2026, but the twelve worksheet periods actually run from April 2025 through March 2026. The worksheet name and sheet content are therefore authoritative for period selection; the filename is not.
+EAS Hours for Invoicing workbooks intentionally use an April-to-March annual cycle. The reviewed workbook's April 2025 through March 2026 worksheet sequence is therefore expected. Although its filename suggests May 2025 to April 2026, that misleading metadata is not evidence that the workbook has the wrong annual period: the worksheet name and sheet content are authoritative for period selection.
 
 ## Enduring structural rules
 
@@ -30,3 +30,5 @@ No exporter correction was justified by the historical evidence. The corrective 
 ## Out of scope
 
 Automatic carry-forward, invoice status, write-off decisions, invoice references and prior-month colour propagation remain outside Sprint 1. Native Excel review remains the manual acceptance authority for final workbook appearance and operational annotations.
+
+Duplicate-month defensive handling is a future robustness item and is not part of this controlled deployment task.
