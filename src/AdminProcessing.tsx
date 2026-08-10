@@ -1,16 +1,20 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type {
   Department,
   EmployeeRegister,
   Grade,
   ProcessingResult,
+  ProjectCatalogueItem,
+  UncodedReviewDecision,
 } from "./domain";
 import {
-  applyUncodedApprovals,
+  applyUncodedDecisions,
   consolidateEntries,
   entryReviewKey,
   missingRegisteredEmployees,
 } from "./consolidation";
+import { AnnualTemplatePanel } from "./AnnualTemplatePanel";
+import { EmployeePublicationPanel } from "./EmployeePublicationPanel";
 import { EmployeeRegisterPanel } from "./EmployeeRegisterPanel";
 import {
   DEPARTMENTS,
@@ -20,6 +24,18 @@ import {
   employeeSnapshot,
 } from "./employeeRegister";
 import { processUploads } from "./processing";
+import {
+  catalogueFromAnnualWorkbook,
+  catalogueFromCurrentEntries,
+  mergeProjectCatalogues,
+} from "./projectCatalogue";
+import { UncodedReviewCard } from "./UncodedReviewCard";
+import {
+  loadAnnualTemplate,
+  removeAnnualTemplate,
+  saveAnnualTemplate,
+  type StoredAnnualTemplate,
+} from "./workstationStore";
 import {
   downloadWorkbook,
   generateInternalWorkbook,
@@ -139,9 +155,16 @@ function UnknownEmployeeResolver({
 export function AdminProcessing({ logout, register, onRegisterChange }: Props) {
   const [month, setMonth] = useState("2026-07");
   const [files, setFiles] = useState<File[]>([]);
-  const [template, setTemplate] = useState<File>();
+  const [template, setTemplate] = useState<StoredAnnualTemplate>();
+  const [templateLoading, setTemplateLoading] = useState(true);
+  const [templateMessage, setTemplateMessage] = useState("");
+  const [annualCatalogue, setAnnualCatalogue] = useState<
+    ProjectCatalogueItem[]
+  >([]);
   const [result, setResult] = useState<ProcessingResult>();
-  const [approvals, setApprovals] = useState<Set<string>>(new Set());
+  const [uncodedDecisions, setUncodedDecisions] = useState<
+    Record<string, UncodedReviewDecision>
+  >({});
   const [descriptionResolutions, setDescriptionResolutions] = useState<
     Record<string, string>
   >({});
@@ -149,14 +172,28 @@ export function AdminProcessing({ logout, register, onRegisterChange }: Props) {
   const [exporting, setExporting] = useState<"project" | "internal">();
   const [message, setMessage] = useState("");
   const reviewedEntries = useMemo(
-    () => (result ? applyUncodedApprovals(result.entries, approvals) : []),
-    [result, approvals],
+    () =>
+      result
+        ? applyUncodedDecisions(
+            result.entries,
+            new Map(Object.entries(uncodedDecisions)),
+          )
+        : [],
+    [result, uncodedDecisions],
   );
   const exceptionEntries = useMemo(
     () =>
       result?.entries.filter((entry) => entry.classification === "exception") ??
       [],
     [result],
+  );
+  const projectCatalogue = useMemo(
+    () =>
+      mergeProjectCatalogues(
+        catalogueFromCurrentEntries(result?.entries ?? []),
+        annualCatalogue,
+      ),
+    [result, annualCatalogue],
   );
   const consolidated = useMemo(
     () =>
@@ -176,10 +213,25 @@ export function AdminProcessing({ logout, register, onRegisterChange }: Props) {
     [result, register, month],
   );
 
+  useEffect(() => {
+    loadAnnualTemplate()
+      .then((stored) => {
+        setTemplate(stored);
+        if (stored)
+          setAnnualCatalogue(catalogueFromAnnualWorkbook(stored.data));
+      })
+      .catch(() =>
+        setTemplateMessage(
+          "The approved annual workbook could not be loaded from this browser.",
+        ),
+      )
+      .finally(() => setTemplateLoading(false));
+  }, []);
+
   async function run() {
     setBusy(true);
     setMessage("");
-    setApprovals(new Set());
+    setUncodedDecisions({});
     setDescriptionResolutions({});
     try {
       setResult(await processUploads(files, month));
@@ -188,13 +240,49 @@ export function AdminProcessing({ logout, register, onRegisterChange }: Props) {
     }
   }
 
-  function toggleApproval(key: string, approved: boolean) {
-    setApprovals((current) => {
-      const next = new Set(current);
-      if (approved) next.add(key);
-      else next.delete(key);
+  function recordUncodedDecision(
+    key: string,
+    decision?: UncodedReviewDecision,
+  ) {
+    setUncodedDecisions((current) => {
+      const next = { ...current };
+      if (decision) next[key] = decision;
+      else delete next[key];
       return next;
     });
+  }
+
+  async function chooseTemplate(file?: File) {
+    if (!file) return;
+    setTemplateMessage("");
+    try {
+      const stored = await saveAnnualTemplate(file);
+      const catalogue = catalogueFromAnnualWorkbook(stored.data);
+      setTemplate(stored);
+      setAnnualCatalogue(catalogue);
+      setTemplateMessage(
+        `Annual workbook saved on this workstation with ${catalogue.length} known project record(s).`,
+      );
+    } catch (cause) {
+      setTemplateMessage(
+        cause instanceof Error
+          ? cause.message
+          : "The annual workbook could not be stored.",
+      );
+    }
+  }
+
+  async function clearTemplate() {
+    try {
+      await removeAnnualTemplate();
+      setTemplate(undefined);
+      setAnnualCatalogue([]);
+      setTemplateMessage("The locally stored annual workbook was removed.");
+    } catch {
+      setTemplateMessage(
+        "The locally stored annual workbook could not be removed.",
+      );
+    }
   }
 
   async function exportProject() {
@@ -204,7 +292,7 @@ export function AdminProcessing({ logout, register, onRegisterChange }: Props) {
     try {
       const data = await generateProjectWorkbook(
         consolidated,
-        await template.arrayBuffer(),
+        template.data,
         __BUILD_ID__,
       );
       downloadWorkbook(data, projectWorkbookFilename(month));
@@ -281,27 +369,13 @@ export function AdminProcessing({ logout, register, onRegisterChange }: Props) {
         onChange={onRegisterChange}
       />
 
-      <section className="workflow-section" aria-labelledby="template-title">
-        <div className="section-heading">
-          <span className="step-number">3</span>
-          <div>
-            <p className="eyebrow">Formatting reference</p>
-            <h3 id="template-title">Select Hours for Invoicing workbook</h3>
-          </div>
-        </div>
-        <label className="file-drop field-width">
-          Workbook / template
-          <input
-            aria-label="Hours for Invoicing template"
-            type="file"
-            accept=".xlsx"
-            onChange={(event) => setTemplate(event.target.files?.[0])}
-          />
-        </label>
-        {template && (
-          <p className="file-confirmed">Template selected: {template.name}</p>
-        )}
-      </section>
+      <AnnualTemplatePanel
+        template={template}
+        loading={templateLoading}
+        message={templateMessage}
+        onChoose={chooseTemplate}
+        onRemove={clearTemplate}
+      />
 
       <section className="workflow-section" aria-labelledby="timesheets-title">
         <div className="section-heading">
@@ -406,29 +480,25 @@ export function AdminProcessing({ logout, register, onRegisterChange }: Props) {
             )}
             {!!exceptionEntries.length && (
               <div className="exception-list">
-                <h4>Uncoded entries requiring an explicit decision</h4>
+                <h4>Review hours without a recognised project number</h4>
+                <p>
+                  Some employees entered hours without a recognised project
+                  number. Review each item below. The Toolkit can suggest
+                  possible existing projects, but you must confirm the correct
+                  destination.
+                </p>
                 {exceptionEntries.map((entry) => {
                   const key = entryReviewKey(entry);
                   return (
-                    <label key={key} className="exception-card">
-                      <input
-                        type="checkbox"
-                        checked={approvals.has(key)}
-                        onChange={(event) =>
-                          toggleApproval(key, event.target.checked)
-                        }
-                      />
-                      <span>
-                        <strong>{entry.description}</strong>
-                        <small>
-                          {entry.employee} - {entry.hours.toFixed(2)} hours -{" "}
-                          {entry.trace.worksheet}, row {entry.trace.row}
-                        </small>
-                        <span>
-                          Approve as an uncoded project for this processing run
-                        </span>
-                      </span>
-                    </label>
+                    <UncodedReviewCard
+                      key={key}
+                      entry={entry}
+                      catalogue={projectCatalogue}
+                      decision={uncodedDecisions[key]}
+                      onDecision={(decision) =>
+                        recordUncodedDecision(key, decision)
+                      }
+                    />
                   );
                 })}
               </div>
@@ -581,7 +651,12 @@ export function AdminProcessing({ logout, register, onRegisterChange }: Props) {
                 </p>
                 <button
                   className="primary"
-                  disabled={!consolidated.canExport || !template || !!exporting}
+                  disabled={
+                    !consolidated.canExport ||
+                    result.fatalErrors.length > 0 ||
+                    !template ||
+                    !!exporting
+                  }
                   onClick={exportProject}
                 >
                   {exporting === "project"
@@ -600,7 +675,11 @@ export function AdminProcessing({ logout, register, onRegisterChange }: Props) {
                 </p>
                 <button
                   className="primary"
-                  disabled={!consolidated.canExport || !!exporting}
+                  disabled={
+                    !consolidated.canExport ||
+                    result.fatalErrors.length > 0 ||
+                    !!exporting
+                  }
                   onClick={exportInternal}
                 >
                   {exporting === "internal"
@@ -608,6 +687,10 @@ export function AdminProcessing({ logout, register, onRegisterChange }: Props) {
                     : "Generate Internal Hours workbook"}
                 </button>
               </article>
+              <EmployeePublicationPanel
+                result={consolidated}
+                blocked={result.fatalErrors.length > 0}
+              />
             </div>
             {message && (
               <p className="status-message" role="status">

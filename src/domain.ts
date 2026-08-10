@@ -31,7 +31,25 @@ export interface TimeEntry {
   hoursAudit?: SourceHoursAudit;
   classification: Classification;
   approvedUncoded?: boolean;
+  uncodedDecision?: UncodedReviewDecision;
   trace: SourceTrace;
+}
+
+export type UncodedReviewDecision =
+  | {
+      kind: "existing-project";
+      projectCode: string;
+      projectDescription: string;
+    }
+  | {
+      kind: "genuine-uncoded";
+      projectDescription: string;
+    };
+
+export interface ProjectCatalogueItem {
+  code: string;
+  description: string;
+  sources: ("current-timesheets" | "annual-workbook")[];
 }
 
 export interface ProcessingResult {
@@ -178,4 +196,21 @@ export interface PublicProject {
 export interface PublicDataset {
   month: string;
   projects: PublicProject[];
+}
+
+export interface EncryptedEmployeePublication {
+  format: "eas-employee-publication";
+  version: 1;
+  month: string;
+  kdf: {
+    name: "PBKDF2";
+    hash: "SHA-256";
+    iterations: number;
+    salt: string;
+  };
+  cipher: {
+    name: "AES-GCM";
+    iv: string;
+  };
+  ciphertext: string;
 }

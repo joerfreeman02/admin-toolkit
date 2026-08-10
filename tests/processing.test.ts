@@ -129,6 +129,32 @@ describe("classification and parsing", () => {
     ]);
     expect(result.entries[1].dailyHours).toEqual({ "1": 1, "2": 1.5 });
   });
+  it("preserves employee-entered uncoded wording from the notes column", () => {
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.aoa_to_sheet([["Project Code", "Description"]]),
+      "Codes",
+    );
+    const rows: unknown[][] = Array.from({ length: 6 }, () => []);
+    rows[0][2] = "Employee Alpha";
+    rows[4] = ["", "Unknown Project", "Harbour Roud", 2, 2];
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.aoa_to_sheet(rows),
+      "July 2026",
+    );
+    const data = XLSX.write(wb, {
+      bookType: "xlsx",
+      type: "array",
+    }) as ArrayBuffer;
+
+    const result = parseWorkbook(data, "synthetic.xlsx", "2026-07");
+    expect(result.entries[0]).toMatchObject({
+      classification: "exception",
+      description: "Harbour Roud",
+    });
+  });
   it("uses the EAS timesheet filename instead of a template theme in C1", () => {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(

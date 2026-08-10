@@ -425,6 +425,7 @@ export async function generateInternalWorkbook(
     "Employee abbreviation",
     "Original code",
     "Original description",
+    "Canonical project code",
     "Canonical project description",
     "Description decision",
     "Column-D / source hours",
@@ -438,11 +439,30 @@ export async function generateInternalWorkbook(
   audit.views = [{ state: "frozen", ySplit: 1, topLeftCell: "A2" }];
   entries.forEach((entry, index) => {
     const employee = resolveEmployee(register, result.month, entry.employee);
-    const descriptionDecision = entry.projectCode
+    const finalProjectCode =
+      entry.uncodedDecision?.kind === "existing-project"
+        ? entry.uncodedDecision.projectCode
+        : entry.projectCode;
+    const descriptionDecision = finalProjectCode
       ? result.descriptionConflicts.find(
-          (conflict) => conflict.projectCode === entry.projectCode,
+          (conflict) => conflict.projectCode === finalProjectCode,
         )
       : undefined;
+    const uncodedDecision = entry.uncodedDecision;
+    const canonicalDescription =
+      uncodedDecision?.projectDescription ??
+      descriptionDecision?.canonicalDescription ??
+      null;
+    const decisionText =
+      uncodedDecision?.kind === "existing-project"
+        ? `Matched to existing project ${uncodedDecision.projectCode}`
+        : uncodedDecision?.kind === "genuine-uncoded"
+          ? "Confirmed as a genuine uncoded project"
+          : descriptionDecision?.resolved
+            ? "Resolved to observed source description"
+            : descriptionDecision
+              ? "Unresolved conflict"
+              : null;
     const destination =
       entry.classification === "internal"
         ? "Internal Hours workbook"
@@ -457,26 +477,27 @@ export async function generateInternalWorkbook(
       employee?.abbreviation ?? "Unresolved",
       entry.projectCode ?? null,
       entry.description,
-      descriptionDecision?.canonicalDescription ?? null,
-      descriptionDecision?.resolved
-        ? "Resolved to observed source description"
-        : descriptionDecision
-          ? "Unresolved conflict"
-          : null,
+      finalProjectCode ?? null,
+      canonicalDescription,
+      decisionText,
       entry.hoursAudit?.columnD ?? entry.hours,
       entry.hoursAudit?.dailyTotal ?? entry.hours,
       (entry.hoursAudit?.columnD ?? entry.hours) -
         (entry.hoursAudit?.dailyTotal ?? entry.hours),
-      entry.approvedUncoded ? "Approved uncoded project" : entry.classification,
+      uncodedDecision?.kind === "existing-project"
+        ? `Matched project ${uncodedDecision.projectCode}`
+        : entry.approvedUncoded
+          ? "Approved uncoded project"
+          : entry.classification,
       destination,
     ];
   });
-  [24, 18, 11, 24, 18, 14, 34, 34, 30, 18, 16, 12, 24, 27].forEach(
+  [24, 18, 11, 24, 18, 14, 34, 18, 34, 30, 18, 16, 12, 24, 27].forEach(
     (width, index) => (audit.getColumn(index + 1).width = width),
   );
-  audit.getColumn(10).numFmt = "0.00";
   audit.getColumn(11).numFmt = "0.00";
   audit.getColumn(12).numFmt = "0.00";
+  audit.getColumn(13).numFmt = "0.00";
   audit.autoFilter = {
     from: { row: 1, column: 1 },
     to: { row: 1, column: auditHeaders.length },

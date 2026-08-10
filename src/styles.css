@@ -18,11 +18,13 @@ body {
 }
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
 }
 input,
-select {
+select,
+textarea {
   border: 1px solid #9aa9a4;
   border-radius: 2px;
   background: #fff;
@@ -77,9 +79,40 @@ footer button {
 nav button:focus-visible,
 button:focus-visible,
 input:focus-visible,
-select:focus-visible {
+select:focus-visible,
+textarea:focus-visible {
   outline: 3px solid #e29b18;
   outline-offset: 2px;
+}
+.persistence-status,
+.decision-status {
+  background: #dfeee6;
+  border-radius: 999px;
+  color: #1f5b3d;
+  padding: 0.4rem 0.7rem;
+}
+.backup-restore,
+.viewer-library {
+  border: 1px solid var(--line);
+  margin: 1rem 0;
+  padding: 0.85rem;
+}
+.backup-restore summary,
+.viewer-library summary {
+  color: var(--green);
+  cursor: pointer;
+  font-weight: 750;
+}
+.stored-template {
+  align-items: flex-start;
+  background: #f4f8df;
+  border-left: 4px solid var(--lime);
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  max-width: 760px;
+  overflow-wrap: anywhere;
+  padding: 1rem;
 }
 main {
   max-width: 1450px;
@@ -344,20 +377,85 @@ main {
   margin-top: 1.5rem;
 }
 .exception-card {
-  align-items: flex-start;
   border: 1px solid var(--line);
-  display: flex;
-  gap: 0.8rem;
+  border-left: 4px solid #a33b20;
+  display: block;
   margin: 0.6rem 0;
-  padding: 0.9rem;
+  padding: 1rem;
 }
-.exception-card > span {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
+.exception-card.resolved {
+  border-left-color: #2f6f4e;
 }
 .exception-card small {
   color: var(--muted);
+}
+.exception-heading,
+.exception-heading > div,
+.suggestion-box,
+.decision-record,
+.one-time-token,
+.publication-output,
+.viewer-unlock {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.exception-heading {
+  align-items: flex-start;
+  flex-direction: row;
+  justify-content: space-between;
+}
+.exception-heading > div > span,
+.suggestion-box > span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.exception-summary {
+  display: flex;
+  gap: 2rem;
+  margin: 1rem 0;
+}
+.exception-summary div {
+  display: grid;
+  gap: 0.2rem;
+}
+.exception-summary dd {
+  margin: 0;
+}
+.suggestion-box {
+  background: #f4f8df;
+  border-left: 4px solid var(--lime);
+  padding: 0.9rem;
+}
+.suggestion-box button {
+  align-self: flex-start;
+}
+.exception-card details {
+  border-top: 1px solid var(--line);
+  margin-top: 1rem;
+  padding-top: 0.8rem;
+}
+.exception-card summary {
+  color: var(--green);
+  cursor: pointer;
+  font-weight: 700;
+}
+.project-search,
+.exception-card details label,
+.publication-output label {
+  display: grid;
+  gap: 0.45rem;
+  margin-top: 0.7rem;
+}
+.decision-record {
+  background: #dfeee6;
+  margin-top: 1rem;
+  padding: 0.8rem;
+}
+.decision-record button {
+  align-self: flex-start;
 }
 .warning-line {
   background: #fff6d8;
@@ -376,6 +474,49 @@ main {
 }
 .output-grid article.internal-output {
   border-top-color: #c68000;
+}
+.output-grid article.employee-publication {
+  border-top-color: #365c96;
+  grid-column: 1 / -1;
+}
+.inline-check,
+.approval-confirmation {
+  align-items: flex-start;
+  display: flex;
+  gap: 0.55rem;
+  margin: 0.9rem 0;
+}
+.inline-check input,
+.approval-confirmation input {
+  margin-top: 0.2rem;
+}
+.one-time-token {
+  background: #fff6d8;
+  border-left: 4px solid #c68000;
+  margin: 1rem 0;
+  padding: 0.9rem;
+}
+.one-time-token code {
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.one-time-token button {
+  align-self: flex-start;
+}
+.publication-output {
+  margin-top: 1rem;
+}
+.publication-output textarea {
+  resize: vertical;
+  width: 100%;
+}
+.viewer-unlock {
+  max-width: 620px;
+}
+.viewer-unlock label,
+.viewer-library label {
+  display: grid;
+  gap: 0.4rem;
 }
 .output-grid small {
   display: block;

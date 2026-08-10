@@ -4,6 +4,7 @@ import type {
   InternalConsolidationRow,
   ProjectConsolidationRow,
   TimeEntry,
+  UncodedReviewDecision,
 } from "./domain";
 import {
   abbreviationCollisions,
@@ -11,6 +12,7 @@ import {
   resolveEmployee,
 } from "./employeeRegister";
 import { reconcile } from "./processing";
+import { isMeaningfulProjectDescription } from "./projectCatalogue";
 
 function normalise(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
@@ -24,11 +26,53 @@ export function applyUncodedApprovals(
   entries: TimeEntry[],
   approvals: ReadonlySet<string>,
 ): TimeEntry[] {
-  return entries.map((entry) =>
-    entry.classification === "exception" && approvals.has(entryReviewKey(entry))
-      ? { ...entry, classification: "project", approvedUncoded: true }
-      : entry,
+  return applyUncodedDecisions(
+    entries,
+    new Map(
+      entries
+        .filter((entry) => approvals.has(entryReviewKey(entry)))
+        .map((entry) => [
+          entryReviewKey(entry),
+          {
+            kind: "genuine-uncoded" as const,
+            projectDescription: entry.description,
+          },
+        ]),
+    ),
   );
+}
+
+export function applyUncodedDecisions(
+  entries: TimeEntry[],
+  decisions: ReadonlyMap<string, UncodedReviewDecision>,
+): TimeEntry[] {
+  return entries.map((entry) => {
+    if (entry.classification !== "exception") return entry;
+    const decision = decisions.get(entryReviewKey(entry));
+    if (!decision) return entry;
+    if (
+      decision.kind === "existing-project" &&
+      decision.projectCode &&
+      isMeaningfulProjectDescription(decision.projectDescription)
+    )
+      return {
+        ...entry,
+        classification: "project",
+        approvedUncoded: false,
+        uncodedDecision: decision,
+      };
+    if (
+      decision.kind === "genuine-uncoded" &&
+      isMeaningfulProjectDescription(decision.projectDescription)
+    )
+      return {
+        ...entry,
+        classification: "project",
+        approvedUncoded: true,
+        uncodedDecision: decision,
+      };
+    return entry;
+  });
 }
 
 export function missingRegisteredEmployees(
@@ -68,14 +112,28 @@ export function consolidateEntries(
       continue;
     }
     if (entry.classification === "project") {
-      const key = entry.approvedUncoded
-        ? `uncoded:${normalise(entry.description)}`
-        : `code:${entry.projectCode}`;
+      const matched =
+        entry.uncodedDecision?.kind === "existing-project"
+          ? entry.uncodedDecision
+          : undefined;
+      const genuine =
+        entry.uncodedDecision?.kind === "genuine-uncoded"
+          ? entry.uncodedDecision
+          : undefined;
+      const projectCode = matched?.projectCode ?? entry.projectCode;
+      const projectDescription =
+        matched?.projectDescription ??
+        genuine?.projectDescription ??
+        entry.description;
+      const approvedUncoded = !!genuine || !!entry.approvedUncoded;
+      const key = approvedUncoded
+        ? `uncoded:${normalise(projectDescription)}`
+        : `code:${projectCode}`;
       const row = projects.get(key) ?? {
         key,
-        code: entry.approvedUncoded ? undefined : entry.projectCode,
-        description: entry.description,
-        approvedUncoded: !!entry.approvedUncoded,
+        code: approvedUncoded ? undefined : projectCode,
+        description: projectDescription,
+        approvedUncoded,
         hoursByEmployee: {},
         total: 0,
         traces: [],
@@ -85,14 +143,14 @@ export function consolidateEntries(
       row.total += entry.hours;
       row.traces.push(entry.trace);
       projects.set(key, row);
-      if (!entry.approvedUncoded && entry.projectCode) {
-        const values = descriptions.get(entry.projectCode) ?? new Map();
-        const description = entry.description.trim();
+      if (!approvedUncoded && projectCode) {
+        const values = descriptions.get(projectCode) ?? new Map();
+        const description = projectDescription.trim();
         values.set(description, [
           ...(values.get(description) ?? []),
           entry.trace,
         ]);
-        descriptions.set(entry.projectCode, values);
+        descriptions.set(projectCode, values);
       }
     } else if (entry.classification === "internal") {
       const key = entry.projectCode

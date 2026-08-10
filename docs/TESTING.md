@@ -2,32 +2,36 @@
 
 ## Automated coverage
 
-Vitest covers parsing/classification, EAS filename identity, TIME-DATA-001 auditing, ZIP handling, lineage, Employee Register CRUD/effective dating/ordering/collisions, new-employee blocking, approvals, aggregation, numeric sorting, deliberate project-description resolution, protected conflict audit retention, internal separation, reconciliation, styled XLSX generation and fail-closed export. React tests cover the protected shell, exact versions and creator attribution.
+Vitest covers parsing/classification, meaningful free-text preservation, EAS filename identity, TIME-DATA-001 auditing, ZIP handling, lineage, Employee Register CRUD/effective dating/ordering/collisions, protected project-catalogue extraction, conservative typo suggestions without automatic acceptance, explicit existing/alternative/genuine-uncoded decisions, prevention of generic grouping, aggregation, conflict resolution, internal separation, reconciliation and styled workbook generation.
 
-Playwright runs desktop and mobile Chromium projects. It covers the landing page, synthetic public viewer, absence of protected conflict context in public, protected route, observed-choice conflict resolution, export blocker removal, remembered workstation state, logout, build diagnostics, keyboard activation, responsive About page, approved portrait and creator credit.
+Publication tests prove that the minimal dataset excludes internal/source/audit data; unresolved exceptions, conflicts, unknown employees and unreconciled results block publication; the Admin and employee storage keys are separate; encrypted packages/fragments contain no synthetic plaintext values; correct tokens decrypt; wrong tokens and altered ciphertext fail.
 
-Candidate evidence:
+Playwright runs Chromium desktop and mobile. It covers the synthetic base viewer, protected route, conflict resolution, Employee Register/session persistence, annual-template IndexedDB import/reload/reopen/reuse/replace/remove, advisory uncoded matching with explicit reversal, output reuse of the stored template, encrypted-fragment handling, wrong/correct Employee Viewer tokens, remembered employee token, employee/project drilldown, confidentiality exclusions, keyboard access and responsive About/creator presentation.
 
-- `56` Vitest tests pass after the conflict-resolution and protected-audit regressions were added.
-- `10` Playwright checks pass across desktop/mobile projects.
-- lint, formatting check, strict TypeScript and production build pass.
-- `pnpm audit --prod` reports no known vulnerabilities.
-- all generated workbook sheets were imported and rendered with the spreadsheet artifact runtime for visual inspection.
+## Required gates
 
-## Isolated real-file acceptance
+Run from a clean dependency installation:
 
-The confidential inputs were copied to a non-repository private workspace and processed locally. The pass detected all 22 workbooks with no fatal parse errors or unresolved employee identities. All imported hours reconciled across project, internal and exception buckets. One source total/daily discrepancy was retained and warned under the resolved TIME-DATA-001 rule.
+```sh
+pnpm install --frozen-lockfile
+pnpm format:check
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm test:coverage
+pnpm test:e2e
+pnpm build
+pnpm audit --prod
+```
 
-The July reference/manual-output coded matrix comparison covered 427 populated union cells: 425 matched and two were the expected one-sided manual omission/addition pattern. Every overlapping populated cell matched. Thirty-three exception rows and three conflicting project-code descriptions remained deliberately unresolved, so real export correctly failed closed pending Office Manager decisions. The confidential starter register passed the application's JSON import validator and resolved all 22 source identities.
+The production build may emit the existing large-chunk advisory; treat new build errors as failures. CI evidence is reported separately from local evidence and must never be claimed before GitHub Actions completes.
 
-Synthetic employee/project data then exercised deliberate resolution of one and multiple conflicts. Hours remained aggregated under each code, only selected observed descriptions entered project output, unresolved conflicts continued to block, and original descriptions plus decisions remained in the protected audit. Both the project workbook and separate internal workbook were parsed and visually inspected. No confidential output is stored in this repository; native Excel appearance remains a manual acceptance step.
+## Workbook verification
 
-## Commands
+Synthetic generated project/internal workbooks must be parsed/reopened and every sheet visually rendered before release. Verify structure, formula results, styles, numeric formats, source-versus-canonical audit columns and confidentiality markings. The annual template supplies structure/presentation and catalogue evidence only; synthetic tests prove current-month values originate from timesheets.
 
-`pnpm lint`, `pnpm format:check`, `pnpm typecheck`, `pnpm test`, `pnpm test:coverage`, `pnpm test:e2e`, `pnpm build`, and `pnpm audit --prod`.
+## Confidential local acceptance
 
-Live token checks and Office Manager decisions on unresolved real exceptions/conflicts remain Product Owner manual acceptance activities.
+Real-file acceptance is a separate, read-only workstation step. Inputs must be copied by the Product Owner into an approved private local directory outside the repository; the Toolkit must not access network shares. Process the selected month, make only explicit controlled review decisions, compare both generated workbooks against prior outputs/template/source evidence, visually inspect every sheet, and report anonymised counts/results only.
 
-## Product Owner acceptance access
-
-A substantive acceptance handover should make the reviewed candidate available through the normal stable Toolkit test URL wherever technically appropriate. The Product Owner must not normally be asked to run a localhost development server, select a deployment branch, troubleshoot GitHub Actions, or administer the repository/deployment simply to reach an acceptance candidate.
+Do not mark this gate passed, merge the correction or deploy it while the required local source copies are unavailable. Never commit confidential inputs, generated outputs, screenshots, logs, plaintext publication data or tokens.

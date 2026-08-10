@@ -1,6 +1,6 @@
 # Employee Register
 
-The protected Employee Register is versioned JSON persisted in browser local storage on the authorised workstation. Real records are operational input and must never be committed or deployed.
+The protected Employee Register is a versioned record persisted in browser local storage on the authorised workstation. Real records are operational input and must never be committed or deployed.
 
 Each employee has a stable generated ID, full name, aliases and one or more effective-dated assignments. An assignment contains department, normalised grade, approved abbreviation, active state and within-band order. Creating a future assignment closes the preceding assignment at the previous month, so later promotions, moves or deactivation do not rewrite earlier interpretation.
 
@@ -13,6 +13,8 @@ Output ordering is deterministic:
 
 Consultant maps to Engineer; Senior Consultant to Senior Engineer; Principal Consultant to Principal Engineer; Graduate Consultant and approved Technician equivalents map to Graduate Engineer / Senior Technician. No other equivalences are invented.
 
-Source names resolve against full names and aliases. A missing identity blocks export and opens the create/match workflow. New employees default after existing employees in the same department/grade band. Abbreviation collisions are shown and block export. The UI supports add, edit, future assignment change, deactivate, alias management and local JSON import/export.
+Source names resolve against full names and aliases. A missing identity blocks export/publication and opens the create/match workflow. New employees default after existing employees in the same department/grade band. Abbreviation collisions are shown and block output. The primary UI supports add, edit, future assignment change, deactivate and alias management. Changes save automatically; no monthly import is required.
 
-The Sprint 1 corrective pass produced and import-tested a confidential 22-record starter register in an approved private operational location outside this repository. It includes the authorised name corrections, abbreviations, consultant/engineer grade mappings and current same-band ordering. The file remains operational input: do not copy it into Git, CI artifacts, Pages or screenshots.
+Backup and restore are deliberately secondary controls. Download a controlled backup before clearing browser/site data or moving workstation, then restore it once on the replacement workstation. Refresh and browser reopening retain the register under normal browser-storage policy.
+
+Any confidential starter register remains operational input outside this repository. Do not copy it into Git, CI artifacts, Pages, screenshots or documentation.

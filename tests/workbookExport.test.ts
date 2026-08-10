@@ -2,6 +2,7 @@ import ExcelJS from "exceljs";
 import { describe, expect, it } from "vitest";
 import {
   applyUncodedApprovals,
+  applyUncodedDecisions,
   consolidateEntries,
   entryReviewKey,
 } from "../src/consolidation";
@@ -159,6 +160,28 @@ describe("Excel outputs", () => {
     expect(sheet.getCell("E11").value).toBe(4);
   });
 
+  it("uses timesheets rather than template hour cells for the current-month matrix", async () => {
+    const run = acceptedRun();
+    const templateWorkbook = new ExcelJS.Workbook();
+    await templateWorkbook.xlsx.load(new Uint8Array(await template()) as never);
+    templateWorkbook.getWorksheet("Jul 26")!.getCell("D11").value = 999;
+    const templateWithPriorValue = asArrayBuffer(
+      await templateWorkbook.xlsx.writeBuffer(),
+    );
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(
+      new Uint8Array(
+        await generateProjectWorkbook(
+          run.result,
+          templateWithPriorValue,
+          "test-sha",
+        ),
+      ) as never,
+    );
+
+    expect(workbook.getWorksheet("Jul 26")!.getCell("D11").value).toBe(3);
+  });
+
   it("places approved uncoded projects last and excludes internal entries", async () => {
     const run = acceptedRun();
     const workbook = new ExcelJS.Workbook();
@@ -220,13 +243,57 @@ describe("Excel outputs", () => {
       "Study A",
       "Study B",
     ]);
-    expect([audit.getCell("H2").value, audit.getCell("H3").value]).toEqual([
+    expect([audit.getCell("I2").value, audit.getCell("I3").value]).toEqual([
       "Study B",
       "Study B",
     ]);
-    expect(audit.getCell("I2").value).toBe(
+    expect(audit.getCell("J2").value).toBe(
       "Resolved to observed source description",
     );
+  });
+
+  it("audits the original uncoded wording and the deliberately selected canonical project", async () => {
+    const uncoded = entry(
+      "Employee Alpha",
+      "Harbour Roud",
+      1.5,
+      "exception",
+      8,
+    );
+    const entries = applyUncodedDecisions(
+      [uncoded],
+      new Map([
+        [
+          entryReviewKey(uncoded),
+          {
+            kind: "existing-project" as const,
+            projectCode: "4312",
+            projectDescription: "Harbour Road Access",
+          },
+        ],
+      ]),
+    );
+    const employeeRegister = register();
+    const result = consolidateEntries(entries, employeeRegister, "2026-07");
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(
+      new Uint8Array(
+        await generateInternalWorkbook(
+          result,
+          entries,
+          employeeRegister,
+          "test-sha",
+        ),
+      ) as never,
+    );
+    const audit = workbook.getWorksheet("Audit Trace")!;
+
+    expect(audit.getCell("F2").value).toBeNull();
+    expect(audit.getCell("G2").value).toBe("Harbour Roud");
+    expect(audit.getCell("H2").value).toBe("4312");
+    expect(audit.getCell("I2").value).toBe("Harbour Road Access");
+    expect(audit.getCell("J2").value).toBe("Matched to existing project 4312");
+    expect(audit.getCell("N2").value).toBe("Matched project 4312");
   });
 
   it("honours a template whose project header begins on row 8", async () => {
@@ -266,8 +333,8 @@ describe("Excel outputs", () => {
     const audit = workbook.getWorksheet("Audit Trace")!;
     expect(audit.getCell("A1").value).toBe("Source file");
     expect(audit.rowCount).toBeGreaterThan(2);
-    expect(audit.getCell("H5").value).toBeNull();
     expect(audit.getCell("I5").value).toBeNull();
+    expect(audit.getCell("J5").value).toBeNull();
   });
 
   it("blocks workbook generation while exceptions remain unresolved", async () => {
