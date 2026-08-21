@@ -3,6 +3,7 @@ import { AdminProcessing } from "./AdminProcessing";
 import type { EmployeeRegister } from "./domain";
 import { loadEmployeeRegister, saveEmployeeRegister } from "./employeeRegister";
 import { PublicViewer } from "./PublicViewer";
+import { migrateWorkstationStore } from "./workstationStore";
 import creatorPortrait from "./assets/joe-freeman.png";
 import "./styles.css";
 
@@ -28,11 +29,11 @@ function AdminGate({ onAuthorise }: { onAuthorise: () => void }) {
       | string
       | undefined;
     if (!expected) {
-      setError("Administrative access is not configured in this build.");
+      setError("NEXUS access is not configured on this computer.");
       return;
     }
     if ((await sha256(token)) !== expected) {
-      setError("Token not recognised.");
+      setError("Access code not recognised.");
       return;
     }
     localStorage.setItem(AUTH_KEY, "true");
@@ -43,13 +44,12 @@ function AdminGate({ onAuthorise }: { onAuthorise: () => void }) {
       <p className="eyebrow">Protected workstation workflow</p>
       <h2>Administrative access</h2>
       <p>
-        This browser-only workstation gate is not server-grade authentication.
-        Confidentiality depends on keeping source and internal data out of the
-        public deployment.
+        Enter the NEXUS access code for this computer. NEXUS will remember this
+        authorised workstation until you sign out or reset access.
       </p>
       <form onSubmit={submit}>
         <label>
-          Administrative token
+          Access code
           <input
             type="password"
             autoComplete="current-password"
@@ -62,7 +62,7 @@ function AdminGate({ onAuthorise }: { onAuthorise: () => void }) {
             {error}
           </p>
         )}
-        <button className="primary">Authorise this workstation</button>
+        <button className="primary">Unlock NEXUS</button>
       </form>
     </section>
   );
@@ -71,12 +71,21 @@ function AdminGate({ onAuthorise }: { onAuthorise: () => void }) {
 function About() {
   return (
     <section className="panel about-page">
-      <p className="eyebrow">About the Toolkit</p>
-      <h2>Operational automation with professional control</h2>
+      <p className="eyebrow">About NEXUS</p>
+      <h2>Timesheet and Invoicing Hours</h2>
       <p>
-        Sprint 1 consolidates timesheets locally, separates confidential
-        internal hours, and generates controlled Excel outputs. Commercial
-        invoice, rate and carryover decisions remain outside this sprint.
+        NEXUS brings monthly timesheets, carried hours, project information and
+        outstanding Third Party Costs into one controlled workflow. It reduces
+        Office Manager administration and gives employees one place to find the
+        information they need when preparing invoices.
+      </p>
+      <h3>EAS FORGE</h3>
+      <p>
+        EAS FORGE is EAS&apos;s internal research and development programme for
+        practical consultancy software. It develops focused tools that reduce
+        repetitive administration, improve consistency and make established
+        consultancy workflows faster while keeping professional judgement with
+        EAS staff.
       </p>
       <section className="creator-section" aria-labelledby="creator-title">
         <img src={creatorPortrait} alt="Portrait of Joe Freeman" />
@@ -84,28 +93,17 @@ function About() {
           <p className="eyebrow">Creator</p>
           <h3 id="creator-title">Joe Freeman</h3>
           <p className="creator-role">
-            Creator &amp; Product Owner — AI Engineering Toolkits
+            Graduate Transport Planner · Creator of EAS FORGE
           </p>
           <p>
-            Joe Freeman conceived and leads the development of the EAS AI
-            Engineering Toolkits programme after identifying recurring
-            consultancy tasks that were repetitive, time-consuming and capable
-            of being improved through carefully controlled automation.
+            Joe Freeman is a Graduate Transport Planner at EAS and the creator
+            of the EAS FORGE internal software programme. Alongside transport
+            planning work, he leads the development of practical internal tools
+            through EAS&apos;s dedicated R&amp;D programme, working with
+            management and end users to turn recurring consultancy and
+            administrative workflows into controlled, tested software.
           </p>
-          <p>
-            Beginning with the Transport Planner Toolkit, the programme has
-            expanded into drainage, flood risk and administrative workflows,
-            with the aim of creating practical software designed around the way
-            consultants actually work.
-          </p>
-          <p>
-            Joe defines the real-world workflows and product requirements,
-            directs the development programme and manually tests each release.
-            The Toolkits are intended to improve efficiency, consistency,
-            traceability and quality while keeping professional judgement at the
-            centre of the consultancy process.
-          </p>
-          <strong>Created by Joe Freeman · EAS AI Engineering Toolkits</strong>
+          <strong>Created by Joe Freeman · EAS FORGE</strong>
         </div>
       </section>
     </section>
@@ -123,6 +121,11 @@ export default function App() {
     loadEmployeeRegister(),
   );
   useEffect(() => saveEmployeeRegister(register), [register]);
+  useEffect(() => {
+    void migrateWorkstationStore().catch(() => {
+      // Persistence failures remain visible when a protected store is used.
+    });
+  }, []);
   useEffect(() => {
     const openEmployeePublication = () => {
       if (location.hash.startsWith("#employee-viewer=")) setView("viewer");
@@ -143,7 +146,7 @@ export default function App() {
         <div className="brand">
           <div className="mark">EAS</div>
           <div>
-            <strong>EAS Admin Toolkit</strong>
+            <strong>NEXUS</strong>
             <span>Timesheet and Invoicing Hours</span>
           </div>
         </div>
@@ -157,29 +160,25 @@ export default function App() {
       <main>
         {view === "home" && (
           <section className="hero">
-            <p className="eyebrow">
-              Sprint 1 - operational development candidate
-            </p>
-            <h1>
-              Monthly timesheets consolidated with every hour accounted for.
-            </h1>
+            <p className="eyebrow">NEXUS 1.0.0</p>
+            <h1>Monthly timesheets turned into clear, ready-to-use reports.</h1>
             <p>
-              Maintain an effective-dated Employee Register, review exceptions,
-              reconcile project and internal time, and generate separate Excel
-              workbooks without uploading confidential files.
+              NEXUS checks the month&apos;s timesheets, helps with anything it
+              cannot identify, and creates the project-hours information staff
+              need to prepare invoices.
             </p>
             <div className="cards">
               <button onClick={nav("admin")}>
                 <span>Protected</span>
-                <strong>Monthly consolidation</strong>
+                <strong>Create monthly reports</strong>
                 <small>
-                  Employee Register, review, reconciliation and Excel outputs
+                  Check timesheets and download project and internal-hours files
                 </small>
               </button>
               <button onClick={nav("viewer")}>
-                <span>Public</span>
-                <strong>Synthetic viewer</strong>
-                <small>No real employee or project-hour publication</small>
+                <span>Employees</span>
+                <strong>View approved project hours</strong>
+                <small>Open information that has been approved for staff</small>
               </button>
             </div>
           </section>
@@ -201,20 +200,20 @@ export default function App() {
             <h2>Build information</h2>
             <dl>
               <dt>Product</dt>
-              <dd>ADMIN-0.2.0</dd>
+              <dd>NEXUS 1.0.0</dd>
               <dt>Module</dt>
-              <dd>TIME-0.2.0</dd>
+              <dd>TIME 1.0.0</dd>
               <dt>Build</dt>
               <dd>{__BUILD_ID__}</dd>
-              <dt>Sprint</dt>
-              <dd>Sprint 1</dd>
+              <dt>Release</dt>
+              <dd>Production 1.0.0</dd>
             </dl>
           </section>
         )}
       </main>
       <footer>
         <button onClick={nav("diagnostics")}>
-          ADMIN-0.2.0 - TIME-0.2.0 - {__BUILD_ID__}
+          NEXUS 1.0.0 · TIME 1.0.0 · {__BUILD_ID__}
         </button>
         <span>Created by Joe Freeman</span>
         <span>Files remain on this workstation.</span>

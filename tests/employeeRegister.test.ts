@@ -1,14 +1,20 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import type { EmployeeRegister } from "../src/domain";
 import {
   abbreviationCollisions,
   addEmployee,
   changeAssignment,
   employeeSnapshot,
+  EMPLOYEE_REGISTER_KEY,
   emptyEmployeeRegister,
+  loadEmployeeRegister,
   normaliseGrade,
   resolveEmployee,
+  saveEmployeeRegister,
+  validateEmployeeRegister,
 } from "../src/employeeRegister";
+
+beforeEach(() => localStorage.clear());
 
 function add(
   register: EmployeeRegister,
@@ -38,6 +44,40 @@ function add(
 }
 
 describe("Employee Register", () => {
+  it("persists a valid register and replaces it atomically on the workstation", () => {
+    const first = add(
+      emptyEmployeeRegister(),
+      "Employee Alpha",
+      "EA",
+      "Transport",
+      "Engineer",
+    );
+    saveEmployeeRegister(first);
+    expect(loadEmployeeRegister().employees[0].fullName).toBe("Employee Alpha");
+    const replacement = add(
+      emptyEmployeeRegister(),
+      "Employee Beta",
+      "EB",
+      "Drainage",
+      "Engineer",
+    );
+    saveEmployeeRegister(replacement);
+    expect(
+      loadEmployeeRegister().employees.map((employee) => employee.fullName),
+    ).toEqual(["Employee Beta"]);
+  });
+
+  it("fails safely when stored or replacement register data is malformed", () => {
+    localStorage.setItem(
+      EMPLOYEE_REGISTER_KEY,
+      JSON.stringify({ version: 1, employees: [{}] }),
+    );
+    expect(loadEmployeeRegister()).toEqual(emptyEmployeeRegister());
+    expect(() =>
+      validateEmployeeRegister({ version: 2, employees: [] }),
+    ).toThrow();
+  });
+
   it("adds and resolves a new employee without a software change", () => {
     const register = add(
       emptyEmployeeRegister(),

@@ -1,4 +1,6 @@
 import ExcelJS from "exceljs";
+import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   applyUncodedApprovals,
@@ -6,7 +8,11 @@ import {
   consolidateEntries,
   entryReviewKey,
 } from "../src/consolidation";
-import type { EmployeeRegister, TimeEntry } from "../src/domain";
+import type {
+  EmployeeRegister,
+  HistoricalCarryRecord,
+  TimeEntry,
+} from "../src/domain";
 import { addEmployee, emptyEmployeeRegister } from "../src/employeeRegister";
 import {
   generateInternalWorkbook,
@@ -20,6 +26,14 @@ function asArrayBuffer(value: unknown): ArrayBuffer {
     bytes.byteOffset,
     bytes.byteOffset + bytes.byteLength,
   ) as ArrayBuffer;
+}
+
+function fill(argb: string) {
+  return {
+    type: "pattern" as const,
+    pattern: "solid" as const,
+    fgColor: { argb },
+  };
 }
 
 async function template(headerRow = 9) {
@@ -46,12 +60,19 @@ async function template(headerRow = 9) {
   sheet.getCell(headerRow + 2, 2).border = { bottom: { style: "thin" } };
   sheet.getCell(headerRow + 2, 3).border = { bottom: { style: "thin" } };
   sheet.getCell(headerRow + 2, 4).border = { bottom: { style: "thin" } };
+  for (const column of [2, 3, 4])
+    sheet.getCell(headerRow + 2, column).fill = fill("FFFFC000");
   sheet.getColumn(2).width = 14;
   sheet.getColumn(3).width = 50;
   sheet.getColumn(4).width = 9;
   sheet.getColumn(24).width = 25;
   sheet.getColumn(25).width = 30;
   return asArrayBuffer(await workbook.xlsx.writeBuffer());
+}
+
+function cellFill(cell: ExcelJS.Cell) {
+  if (cell.fill.type !== "pattern") return undefined;
+  return cell.fill.fgColor?.argb;
 }
 
 function register(): EmployeeRegister {
@@ -126,7 +147,7 @@ function acceptedRun() {
 }
 
 describe("Excel outputs", () => {
-  it("generates a parseable project workbook with ordered employee headers", async () => {
+  it("generates neutral data rows while preserving the four commercial legend colours", async () => {
     const run = acceptedRun();
     const data = await generateProjectWorkbook(
       run.result,
@@ -141,9 +162,81 @@ describe("Excel outputs", () => {
     expect(sheet.getCell("D9").value).toBe("EA");
     expect(sheet.getCell("E9").value).toBe("EB");
     expect(sheet.getColumn(2).width).toBe(14);
-    expect(sheet.getCell("C3").fill).toMatchObject({
-      fgColor: { argb: "FFFFFF00" },
+    expect([3, 4, 5, 6].map((row) => cellFill(sheet.getCell(row, 3)))).toEqual([
+      "FFFFFF00",
+      "FFFFC000",
+      "FF92D050",
+      "FF95A6BD",
+    ]);
+    const commercialFills = new Set([
+      "FFFFFF00",
+      "FFFFC000",
+      "FF92D050",
+      "FF95A6BD",
+    ]);
+    for (let row = 11; row <= 15; row++)
+      for (let column = 2; column <= 7; column++)
+        expect(
+          commercialFills.has(cellFill(sheet.getCell(row, column)) ?? ""),
+        ).toBe(false);
+  });
+
+  it("writes historical person-level carry detail without collapsing months into an unexplained total", async () => {
+    const run = acceptedRun();
+    const employeeId = run.employeeRegister.employees[0].id;
+    const carry = (
+      projectCode: string,
+      projectDescription: string,
+      originatingMonth: string,
+      hours: number,
+      sourceRow: number,
+    ): HistoricalCarryRecord => ({
+      projectCode,
+      projectDescription,
+      employeeId,
+      employee: "Employee Alpha",
+      employeeAbbreviation: "EA",
+      department: "Drainage",
+      hours,
+      originatingMonth,
+      originatingYear: Number(originatingMonth.slice(0, 4)),
+      sourceWorkbook: "Synthetic 2026-27.xlsx",
+      sourceWorkbookId: "financial-year:2026/27",
+      sourceWorksheet: `${originatingMonth.slice(5)} synthetic`,
+      sourceRow,
+      sourceColumn: 4,
+      sourceCell: `D${sourceRow}`,
+      status: "carry",
+      fill: "#92D050",
     });
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(
+      new Uint8Array(
+        await generateProjectWorkbook(
+          run.result,
+          await template(),
+          "test-sha",
+          [
+            carry("2101", "Synthetic Project", "2026-05", 3, 11),
+            carry("2101", "Synthetic Project", "2026-06", 4, 12),
+            carry("4200", "Carry-only Project", "2026-05", 2, 13),
+          ],
+        ),
+      ) as never,
+    );
+    const project = workbook.getWorksheet("Jul 26")!;
+    expect(project.getCell("F11").value).toContain("May 26 · EA · 3.00h");
+    expect(project.getCell("F11").value).toContain("Jun 26 · EA · 4.00h");
+    expect(cellFill(project.getCell("F11"))).toBeUndefined();
+    expect(project.getCell("B12").value).toBe(4200);
+    const audit = workbook.getWorksheet("Carry-over Audit")!;
+    expect(audit.getCell("A1").value).toBe("Project number");
+    expect(audit.getCell("C2").value).toBe("Employee Alpha");
+    expect(audit.getCell("E2").value).toBe("Drainage");
+    expect(audit.getCell("N2").value).toBe("ACTIVE");
+    expect(audit.getCell("H2").value).toBe(2026);
+    expect(audit.getCell("I2").value).toBe("Synthetic 2026-27.xlsx");
+    expect(audit.getCell("K2").value).toBe("D11");
   });
 
   it("consolidates repeated project rows into expected employee cells", async () => {
@@ -327,7 +420,7 @@ describe("Excel outputs", () => {
       ) as never,
     );
     const sheet = workbook.getWorksheet("Internal Hours")!;
-    expect(sheet.getCell("A1").value).toContain("EAS Internal Hours");
+    expect(sheet.getCell("A1").value).toContain("NEXUS Internal Hours");
     expect(sheet.getCell("A7").value).toBe(10002);
     expect(sheet.getCell("D7").value).toBe(2.5);
     const audit = workbook.getWorksheet("Audit Trace")!;
@@ -335,6 +428,254 @@ describe("Excel outputs", () => {
     expect(audit.rowCount).toBeGreaterThan(2);
     expect(audit.getCell("I5").value).toBeNull();
     expect(audit.getCell("J5").value).toBeNull();
+  });
+
+  it("separates Unknown and Excluded hours in both private workbooks while preserving employee totals", async () => {
+    const unknown = entry(
+      "Employee Alpha",
+      "Missing project detail",
+      1.5,
+      "exception",
+      8,
+    );
+    const excluded = entry(
+      "Employee Beta",
+      "Duplicate submission",
+      0.75,
+      "exception",
+      9,
+    );
+    const timeInLieu = entry(
+      "Employee Alpha",
+      "17.25hrs in lieu from June",
+      17.25,
+      "exception",
+      10,
+    );
+    const entries = applyUncodedDecisions(
+      [
+        entry("Employee Alpha", "Synthetic Project", 2, "project", 5, "2101"),
+        entry("Employee Beta", "Training", 1, "internal", 6, "10002"),
+        timeInLieu,
+        unknown,
+        excluded,
+      ],
+      new Map([
+        [entryReviewKey(timeInLieu), { kind: "time-in-lieu" as const }],
+        [entryReviewKey(unknown), { kind: "unknown-project" as const }],
+        [
+          entryReviewKey(excluded),
+          { kind: "excluded" as const, reason: "Duplicate" },
+        ],
+      ]),
+    );
+    const employeeRegister = register();
+    const result = consolidateEntries(entries, employeeRegister, "2026-07");
+    expect(result.canExport).toBe(true);
+    const carry: HistoricalCarryRecord = {
+      projectCode: "4312",
+      projectDescription: "Synthetic Carried Project",
+      employeeId: employeeRegister.employees[0].id,
+      employee: "Employee Alpha",
+      employeeAbbreviation: "EA",
+      department: "Drainage",
+      hours: 3.5,
+      originatingMonth: "2026-06",
+      originatingYear: 2026,
+      sourceWorkbook: "Synthetic Historical Workbook.xlsx",
+      sourceWorkbookId: "synthetic-history",
+      sourceWorksheet: "Jun 26",
+      sourceRow: 11,
+      sourceColumn: 4,
+      sourceCell: "D11",
+      status: "carry",
+      fill: "#92D050",
+    };
+
+    const project = new ExcelJS.Workbook();
+    const projectData = await generateProjectWorkbook(
+      result,
+      await template(),
+      "test-sha",
+      [carry],
+    );
+    await project.xlsx.load(new Uint8Array(projectData) as never);
+    const projectSheet = project.getWorksheet("Jul 26")!;
+    const unknownProjectRow = projectSheet.getRow(
+      projectSheet
+        .getColumn(3)
+        .values.findIndex((value) => value === "Unallocated / Unknown Project"),
+    );
+    const excludedProjectRow = projectSheet.getRow(
+      projectSheet
+        .getColumn(3)
+        .values.findIndex((value) => value === "Excluded / Discarded Hours"),
+    );
+    const timeInLieuProjectRow = projectSheet.getRow(
+      projectSheet
+        .getColumn(3)
+        .values.findIndex((value) => value === "Time in Lieu"),
+    );
+    expect(timeInLieuProjectRow.getCell(4).value).toBe(17.25);
+    expect(unknownProjectRow.getCell(4).value).toBe(1.5);
+    expect(unknownProjectRow.getCell(5).value).toBeNull();
+    expect(excludedProjectRow.getCell(4).value).toBeNull();
+    expect(excludedProjectRow.getCell(5).value).toBe(0.75);
+
+    const internal = new ExcelJS.Workbook();
+    const internalData = await generateInternalWorkbook(
+      result,
+      entries,
+      employeeRegister,
+      "test-sha",
+    );
+    await internal.xlsx.load(new Uint8Array(internalData) as never);
+    const internalSheet = internal.getWorksheet("Internal Hours")!;
+    const labels = internalSheet.getColumn(1).values;
+    const unknownInternalRow = internalSheet.getRow(
+      labels.findIndex((value) => value === "Unknown / Unallocated"),
+    );
+    const excludedInternalRow = internalSheet.getRow(
+      labels.findIndex((value) => value === "Excluded / Discarded"),
+    );
+    const timeInLieuInternalRow = internalSheet.getRow(
+      labels.findIndex((value) => value === "Time in Lieu"),
+    );
+    expect(timeInLieuInternalRow.getCell(3).value).toBe(17.25);
+    expect(unknownInternalRow.getCell(3).value).toBe(1.5);
+    expect(excludedInternalRow.getCell(4).value).toBe(0.75);
+    const audit = internal.getWorksheet("Audit Trace")!;
+    expect(audit.getCell("O4").value).toMatch(/Time in Lieu/);
+    expect(audit.getCell("O5").value).toMatch(/Unknown/);
+    expect(audit.getCell("O6").value).toMatch(/Excluded/);
+    expect(audit.getCell("J6").value).toContain("Duplicate");
+    if (process.env.NEXUS_QA_OUTPUT_DIR) {
+      await mkdir(process.env.NEXUS_QA_OUTPUT_DIR, { recursive: true });
+      await writeFile(
+        path.join(
+          process.env.NEXUS_QA_OUTPUT_DIR,
+          "NEXUS-1.0A.3-Project-QA.xlsx",
+        ),
+        new Uint8Array(projectData),
+      );
+      await writeFile(
+        path.join(
+          process.env.NEXUS_QA_OUTPUT_DIR,
+          "NEXUS-1.0A.3-Internal-QA.xlsx",
+        ),
+        new Uint8Array(internalData),
+      );
+    }
+  });
+
+  it("writes Time in Lieu as a separate private non-project row with employee attribution", async () => {
+    const source = entry(
+      "Employee Alpha",
+      "17.25hrs in lieu from June",
+      17.25,
+      "exception",
+      12,
+    );
+    const entries = applyUncodedDecisions(
+      [source],
+      new Map([[entryReviewKey(source), { kind: "time-in-lieu" as const }]]),
+    );
+    const employeeRegister = register();
+    const result = consolidateEntries(entries, employeeRegister, "2026-07");
+
+    const project = new ExcelJS.Workbook();
+    const projectData = await generateProjectWorkbook(
+      result,
+      await template(),
+      "test-sha",
+    );
+    await project.xlsx.load(new Uint8Array(projectData) as never);
+    const projectSheet = project.getWorksheet("Jul 26")!;
+    const projectRow = projectSheet.getRow(
+      projectSheet
+        .getColumn(3)
+        .values.findIndex((value) => value === "Time in Lieu"),
+    );
+    expect(projectRow.getCell(4).value).toBe(17.25);
+
+    const internal = new ExcelJS.Workbook();
+    const internalData = await generateInternalWorkbook(
+      result,
+      entries,
+      employeeRegister,
+      "test-sha",
+    );
+    await internal.xlsx.load(new Uint8Array(internalData) as never);
+    const internalSheet = internal.getWorksheet("Internal Hours")!;
+    const internalRow = internalSheet.getRow(
+      internalSheet
+        .getColumn(1)
+        .values.findIndex((value) => value === "Time in Lieu"),
+    );
+    expect(internalRow.getCell(3).value).toBe(17.25);
+    const audit = internal.getWorksheet("Audit Trace")!;
+    expect(audit.getCell("N2").value).toBe("Time in Lieu");
+    expect(audit.getCell("O2").value).toMatch(/Time in Lieu/);
+  });
+
+  it("retains historical Unknown Project carry in the separate non-project rows", async () => {
+    const employeeRegister = register();
+    const result = consolidateEntries([], employeeRegister, "2026-07");
+    const historicalUnknown: HistoricalCarryRecord = {
+      projectCode: undefined,
+      projectDescription: "Historic source wording",
+      employeeId: employeeRegister.employees[0].id,
+      employee: "Employee Alpha",
+      employeeAbbreviation: "EA",
+      department: "Drainage",
+      hours: 3.5,
+      originatingMonth: "2025-05",
+      originatingYear: 2025,
+      sourceWorkbook: "Synthetic Historical Workbook.xlsx",
+      sourceWorkbookId: "synthetic-history-unknown",
+      sourceWorksheet: "May 25",
+      sourceRow: 12,
+      sourceColumn: 4,
+      sourceCell: "D12",
+      status: "carry",
+      fill: "#92D050",
+    };
+
+    const project = new ExcelJS.Workbook();
+    const projectData = await generateProjectWorkbook(
+      result,
+      await template(),
+      "test-sha",
+      [historicalUnknown],
+    );
+    await project.xlsx.load(new Uint8Array(projectData) as never);
+    const projectSheet = project.getWorksheet("Jul 26")!;
+    const projectRow = projectSheet.getRow(
+      projectSheet
+        .getColumn(3)
+        .values.findIndex((value) => value === "Unallocated / Unknown Project"),
+    );
+    expect(projectRow.getCell(4).value).toBe(3.5);
+    expect(project.getWorksheet("Carry-over Audit")!.getCell("A2").value).toBe(
+      "Unknown Project carry",
+    );
+
+    const internal = new ExcelJS.Workbook();
+    const internalData = await generateInternalWorkbook(
+      result,
+      [],
+      employeeRegister,
+      "test-sha",
+      [historicalUnknown],
+    );
+    await internal.xlsx.load(new Uint8Array(internalData) as never);
+    const internalSheet = internal.getWorksheet("Internal Hours")!;
+    const internalRow = internalSheet.getRow(
+      internalSheet
+        .getColumn(1)
+        .values.findIndex((value) => value === "Unknown / Unallocated"),
+    );
+    expect(internalRow.getCell(3).value).toBe(3.5);
   });
 
   it("blocks workbook generation while exceptions remain unresolved", async () => {

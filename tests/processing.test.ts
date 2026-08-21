@@ -154,6 +154,15 @@ describe("classification and parsing", () => {
       classification: "exception",
       description: "Harbour Roud",
     });
+    expect(result.entries[0].sourceContext).toMatchObject({
+      employee: "Employee Alpha",
+      month: "2026-07",
+      recordedHours: 2,
+      originalDescription: "Harbour Roud",
+    });
+    expect(
+      result.entries[0].sourceContext?.surroundingRows.length,
+    ).toBeLessThanOrEqual(5);
   });
   it("uses the EAS timesheet filename instead of a template theme in C1", () => {
     const wb = XLSX.utils.book_new();
@@ -262,8 +271,8 @@ describe("aggregation, reconciliation and confidentiality", () => {
   it("aggregates repeated employee project rows and project totals", () => {
     const data = toPublicDataset(entries, "2026-07");
     expect(data.projects[0].contributors).toEqual([
-      { employee: "Employee A", hours: 5 },
-      { employee: "Employee B", hours: 4 },
+      { employee: "Employee A", department: "Mixed", hours: 5 },
+      { employee: "Employee B", department: "Mixed", hours: 4 },
     ]);
     expect(data.projects[0].total).toBe(9);
   });
@@ -276,6 +285,9 @@ describe("aggregation, reconciliation and confidentiality", () => {
     expect(reconcile(entries)).toEqual({
       project: 9,
       internal: 1,
+      timeInLieu: 0,
+      unknown: 0,
+      excluded: 0,
       exception: 0.5,
       total: 10.5,
       reconciles: true,

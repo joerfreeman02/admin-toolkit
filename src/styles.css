@@ -98,10 +98,28 @@ textarea:focus-visible {
   padding: 0.85rem;
 }
 .backup-restore summary,
-.viewer-library summary {
+.viewer-library summary,
+.employee-manager > summary,
+.historical-summary summary,
+.report-details summary {
   color: var(--green);
   cursor: pointer;
   font-weight: 750;
+}
+.employee-manager {
+  border: 1px solid var(--line);
+  padding: 0.85rem;
+}
+.employee-manager > summary {
+  list-style-position: inside;
+}
+.advanced-field {
+  align-self: end;
+  border: 1px solid var(--line);
+  padding: 0.65rem;
+}
+.advanced-field label {
+  margin-top: 0.65rem;
 }
 .stored-template {
   align-items: flex-start;
@@ -113,6 +131,27 @@ textarea:focus-visible {
   max-width: 760px;
   overflow-wrap: anywhere;
   padding: 1rem;
+}
+.workbook-area {
+  border-top: 1px solid var(--line);
+  padding: 1.5rem 0;
+}
+.workbook-history {
+  background: #f7f8f6;
+  border: 1px solid var(--line);
+  margin-top: 0.8rem;
+  max-width: 760px;
+  padding: 0.5rem 1rem;
+}
+.workbook-history p {
+  margin: 0.55rem 0;
+}
+.rollover-guidance {
+  margin-top: 0.8rem;
+  max-width: 760px;
+}
+.rollover-guidance p {
+  margin-bottom: 0;
 }
 main {
   max-width: 1450px;
@@ -230,6 +269,10 @@ main {
   font-weight: 650;
   color: var(--muted);
 }
+.current-month-label {
+  color: var(--ink);
+  font-size: 1.15rem;
+}
 .button-row {
   display: flex;
   align-items: center;
@@ -326,6 +369,82 @@ main {
 .resolution-card {
   border: 1px solid #c68000;
   background: #fff9e8;
+  margin: 1rem 0;
+  padding: 1rem;
+}
+.guided-review-queue,
+.guided-review-card {
+  max-width: 760px;
+}
+.guided-review-card {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-left: 5px solid #c68000;
+  margin-top: 1rem;
+  padding: 1.2rem;
+}
+.guided-review-card label,
+.review-action {
+  display: grid;
+  gap: 0.5rem;
+}
+.review-action {
+  margin: 1rem 0;
+}
+.review-action .primary {
+  justify-self: start;
+}
+.review-progress {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: space-between;
+}
+.review-progress progress {
+  accent-color: var(--green);
+  min-width: 180px;
+}
+.review-card-footer {
+  align-items: flex-start;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  justify-content: space-between;
+  margin-top: 1rem;
+  padding-top: 0.8rem;
+}
+.skip-button {
+  margin-top: 1rem;
+}
+.historical-review-area {
+  border-top: 1px solid var(--line);
+  padding: 1.5rem 0;
+}
+.historical-summary {
+  align-items: flex-start;
+  background: #f7f9f8;
+  border: 1px solid var(--line);
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 2fr);
+  padding: 1rem;
+}
+.historical-summary h3,
+.historical-summary p {
+  margin: 0.25rem 0;
+}
+.historical-summary .guided-review-card {
+  grid-column: 1 / -1;
+}
+.historical-summary .secondary-button {
+  align-self: center;
+  justify-self: end;
+}
+.warning-summary {
+  background: #fff6d8;
+  border-left: 4px solid #c68000;
   margin: 1rem 0;
   padding: 1rem;
 }
@@ -432,6 +551,19 @@ main {
 .suggestion-box button {
   align-self: flex-start;
 }
+.suggested-project {
+  align-items: flex-start;
+  border-top: 1px solid #cdd8bd;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding-top: 0.7rem;
+}
+.internal-suggestion {
+  background: #fff6d8;
+  border-left-color: #c68000;
+  margin-top: 0.75rem;
+}
 .exception-card details {
   border-top: 1px solid var(--line);
   margin-top: 1rem;
@@ -448,6 +580,58 @@ main {
   display: grid;
   gap: 0.45rem;
   margin-top: 0.7rem;
+}
+.project-search-results {
+  display: grid;
+  gap: 0.45rem;
+  margin-top: 0.6rem;
+}
+.project-search-results button {
+  align-items: flex-start;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  text-align: left;
+}
+.review-resolution-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 1rem;
+}
+.source-context-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.source-context-grid div {
+  min-width: 0;
+}
+.source-context-grid dd {
+  margin: 0.2rem 0 0;
+  overflow-wrap: anywhere;
+}
+.source-row-context {
+  font-size: 0.9rem;
+  margin: 0.8rem 0;
+}
+.employee-status-summary {
+  background: #fff6d8;
+  border-left: 4px solid #c68000;
+  margin-top: 1rem;
+  padding: 0.8rem;
+}
+.compact-input-status {
+  align-items: center;
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.compact-input-status h3,
+.compact-input-status p {
+  margin-block: 0.25rem;
+}
+.compact-input-status .status-message,
+.compact-input-status details {
+  grid-column: 1 / -1;
 }
 .decision-record {
   background: #dfeee6;
@@ -475,9 +659,39 @@ main {
 .output-grid article.internal-output {
   border-top-color: #c68000;
 }
+.report-ready-grid {
+  margin-top: 1.2rem;
+}
+.report-ready-grid article {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+.report-kind {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.report-status {
+  color: var(--green);
+  font-size: 1.55rem;
+}
+.report-ready-grid .primary {
+  align-self: flex-start;
+}
+.report-details {
+  border: 1px solid var(--line);
+  margin-top: 1rem;
+  padding: 0.85rem;
+}
 .output-grid article.employee-publication {
   border-top-color: #365c96;
   grid-column: 1 / -1;
+}
+.publication-grid {
+  grid-template-columns: minmax(0, 1fr);
 }
 .inline-check,
 .approval-confirmation {
@@ -677,6 +891,27 @@ main {
   padding: 0.8rem;
   margin-bottom: 0.5rem;
 }
+.tpc-item {
+  background: #fff;
+  border: 1px solid var(--line);
+  display: grid;
+  gap: 0.25rem;
+  margin: 0.65rem 0;
+  padding: 0.8rem;
+}
+.tpc-item span {
+  color: var(--muted);
+}
+.unallocated-tpcs {
+  border-top: 1px solid var(--line);
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+}
+.unallocated-tpcs summary {
+  color: var(--green);
+  cursor: pointer;
+  font-weight: 750;
+}
 .table-wrap {
   overflow: auto;
 }
@@ -729,9 +964,14 @@ footer button {
   .cards,
   .split,
   .output-grid,
+  .historical-summary,
   .form-grid,
   .resolver-grid,
   .compact-form {
+    grid-template-columns: 1fr;
+  }
+  .compact-input-status,
+  .source-context-grid {
     grid-template-columns: 1fr;
   }
   .metrics {

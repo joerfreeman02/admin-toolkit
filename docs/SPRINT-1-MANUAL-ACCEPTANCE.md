@@ -1,16 +1,33 @@
-# Sprint 1 manual acceptance script
+# NEXUS 1.0A.3 manual acceptance
 
-Use the normal deployed URL. Keep all operational inputs and generated outputs on the authorised local workstation. Never attach them to GitHub or record confidential values in acceptance evidence.
+Use the controlled local/deployed candidate. Keep all operational inputs and generated outputs on the authorised workstation. Never attach confidential files or values to GitHub evidence.
 
-1. Sign in to Admin Processing with the existing Admin token. Confirm invalid input is rejected, a valid authorisation survives reload, and Logout / reset revokes the workstation flag.
-2. Confirm the Employee Register says it is saved on this workstation. Add/edit a synthetic employee, reload, confirm the change persists, then test effective-dated deactivation. Confirm backup/restore is secondary and no monthly import is required.
-3. On first use, choose an approved annual Hours for Invoicing workbook. Reload/reopen and confirm its filename remains available without selecting it again. Exercise Replace and Remove only with controlled local test copies.
-4. Select July 2026 and process the controlled local timesheet ZIP/workbooks. Confirm coded project hours come from timesheets, not existing template hour cells, and project/internal/exception totals reconcile exactly.
-5. For each unknown/free-text project row, confirm the employee-entered wording is useful. Check that any possible project is only a suggestion. Test Confirm this match, search/select another project, Keep as genuinely uncoded and Leave unresolved. No bulk approval.
-6. Create/identify conflicting descriptions for one project code. Confirm output is blocked until a deliberate observed canonical name is selected and original values remain visible only in protected context/audit.
-7. With every control resolved, generate both workbooks. Open them in native Excel and inspect employee order, numeric project sort, uncoded-last placement, totals, legend/style, confidential internal separation, creator/build metadata and original/final audit fields.
-8. In Employee Viewer Access, generate a separate employee token and save it securely. Confirm it is not the Admin token. Select Remember only on an approved workstation.
-9. Tick the explicit monthly approval and publish. Confirm the copied link contains an encrypted fragment but no recognisable employee/project/hour plaintext; retain the encrypted `.easpub` fallback if required.
-10. Open the employee-view link. Confirm a wrong token fails, the correct token opens the approved month, employees see their projects/hours and project drilldown shows contributors/total. Confirm internal hours, audit/source context and unresolved entries are absent. Reopen the stored encrypted month and test remembered-token behaviour.
+1. Open Admin Processing with a test/authorised token. Confirm invalid input fails, authorisation survives reload/reopen, and **Logout / reset** clears access.
+2. Confirm the Employee Register persists. Exercise **Manage / replace Employee Register** with a controlled valid copy, reject a malformed copy, edit a synthetic effective-dated assignment, reload, and confirm the result. Verify Transport, Drainage, Mixed and Sustainability attribution.
+3. Add the Current FY workbook. Confirm the plain-English status shows the April-to-March year and latest month, then reload and reopen the browser to confirm it remains. Replace it with a valid newer copy and confirm the earlier same-FY copy is no longer used.
+4. Under **Manage previous years**, add the immediately preceding FY workbook. Confirm it remains listed as retained, its green carry is found alongside current-FY carry, and the source workbook/month/year/person/project/department/hours/cell remain distinguishable. Confirm duplicate copies do not duplicate carry records.
+5. Test a malformed workbook, duplicate month, unsupported fill and green cell without a project number. Confirm NEXUS explains what is wrong and the next action instead of guessing. Change an earlier green cell to the established closed/invoiced state in the latest controlled copy and confirm an older copy does not resurrect it.
+6. Process the 22-timesheet acceptance ZIP for July 2026. Confirm all 22 files are recognised, employees match the register, current project/internal/exception totals reconcile, and existing exception/description controls still work.
+7. Generate controlled synthetic outputs. Open the project workbook in native Excel and inspect the current-month matrix, carry-only projects, green carry detail, and `Carry-over Audit` provenance. Inspect the confidential Internal Hours workbook and audit trace separately. Confirm no internal categories enter the project output.
+8. Select March and confirm it remains in its closing FY regardless of the workstation date. Then select the first April, confirm the simple rollover guidance, create a controlled April report, and verify the previous workbook is byte-for-byte unchanged while the new Current FY workbook is initialised and open historical carry remains available.
+9. Verify a historical employee before register `effectiveFrom` resolves to the latest/current registered assignment, with the original month/year unchanged. Confirm employees absent from the source month are not manufactured. Verify the supplied real workbooks' genuine missing-project and unmatched historical-heading review items remain visible for authorised business correction.
+10. Supply several current-month review items. Confirm only one card is visible, **Save & next** advances, **Skip for now** advances without discarding the item, and the count remains correct.
+11. Confirm current-month items precede carry review. Confirm the compact **This financial year** and **Previous financial years** queues are distinct and initially closed. Open only one queue at a time. For a Current FY missing project, confirm **Keep as Unknown Project carry** is available but **Already dealt with** is not. For a closed previous-FY missing project, confirm both one-click actions are available. Map a former abbreviation to an inactive employee, reload/reprocess and confirm the unchanged issue is not requested again. Change controlled source evidence and confirm affected review reopens.
+12. Confirm normal warnings use staff names and plain business language; open technical details and verify the original file/row evidence remains available.
+13. Confirm the Employee Register table is hidden until **Manage employee list** is opened, the selected month reads as a friendly month/year, and all four workflow steps remain clear.
+14. Confirm Step 3 shows two concise report cards, both downloads work, no full report-preview table appears, and internal-hours data remains absent from employee publication.
+15. Exercise encrypted Employee Viewer publication with synthetic approved data. Confirm wrong/correct token behaviour, optional remembered token, project-only visibility and absence of internal/audit data. Carry presentation is deferred to Sprint 1.0B.
 
-Record pass/fail evidence in anonymised form. Sprint 1 remains untagged and unfrozen until Product Owner acceptance.
+## 1.0A.3 additions
+
+- Load the latest macro-enabled Job Register. Confirm the compact ready status persists after refresh, a later valid copy replaces it, an invalid copy leaves the last valid catalogue intact, and no macro runs or source byte changes.
+- Search by exact/partial project number, name, client and manager. Confirm only a small shortlist appears and selecting a suggestion saves and advances in one click.
+- Confirm `in lieu`, `time in lieu` and `TOIL` offer the advisory **Use Time in Lieu** action without requiring a numeric EAS code. Confirm it saves and advances, is reconciled and appears only in the private reports.
+- Resolve two current review items in sequence and confirm the display advances from **Item 1 of 2 · 2 remaining** to **Item 2 of 2 · 1 remaining**. Skip an item and confirm it advances without reducing the unresolved count.
+- Resolve controlled items with **Leave as Unknown Project** and **Exclude these hours**. Confirm both cease blocking, all source hours reconcile once, and the project/private workbooks show separate Unknown and Excluded rows under the correct employees.
+- Publish synthetic Unknown/Excluded hours and confirm employees see only month, hours and neutral status—not descriptions, reasons, internal categories, filenames or rows.
+- Use **Treat as former employee** without creating an active register entry. For a closed-year stale prompt, use **Already dealt with — don't carry forward** or **Keep as Unknown Project carry**, then confirm unchanged evidence stays suppressed, changed evidence reopens, the original month/hours remain auditable, and current-FY authority is unaffected.
+- Open original entry, inspect the bounded surrounding rows and download the original timesheet. Confirm the downloaded bytes are the browser-local source and no external upload or OS automation occurs.
+- Confirm Step 3 and Step 4 use plain English and the normal resolution paths need one deliberate click.
+
+Record only anonymised counts/pass-fail evidence. Do not tag, merge, deploy, freeze or call the candidate accepted without explicit Technical Director/Product Owner authorisation.

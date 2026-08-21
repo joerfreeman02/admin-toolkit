@@ -5,6 +5,8 @@ import {
   catalogueFromAnnualWorkbook,
   catalogueFromCurrentEntries,
   mergeProjectCatalogues,
+  suggestsTimeInLieu,
+  suggestInternalCategories,
   suggestProjects,
 } from "../src/projectCatalogue";
 
@@ -82,5 +84,35 @@ describe("project catalogue and conservative suggestions", () => {
         catalogueFromAnnualWorkbook(annualWorkbook()),
       ),
     ).toEqual([]);
+  });
+
+  it("suggests only an authorised internal category and never accepts it automatically", () => {
+    const catalogue = [
+      {
+        code: "10008",
+        description: "Time in Lieu",
+        source: "annual-workbook" as const,
+      },
+      {
+        code: "10002",
+        description: "Training",
+        source: "annual-workbook" as const,
+      },
+    ];
+    const suggestions = suggestInternalCategories(
+      "17.25hrs in lieu from June",
+      catalogue,
+    );
+    expect(suggestions.map(({ item }) => item)).toEqual([catalogue[0]]);
+    expect(catalogue).toHaveLength(2);
+  });
+
+  it("recognises only strong Time in Lieu wording as the authorised special category", () => {
+    expect(suggestsTimeInLieu("17.25hrs in lieu from June")).toBe(true);
+    expect(suggestsTimeInLieu("Time in Lieu accrued")).toBe(true);
+    expect(suggestsTimeInLieu("TOIL for weekend work")).toBe(true);
+    expect(suggestsTimeInLieu("The meeting took place at a lieu venue")).toBe(
+      false,
+    );
   });
 });

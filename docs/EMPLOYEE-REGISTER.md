@@ -15,6 +15,8 @@ Consultant maps to Engineer; Senior Consultant to Senior Engineer; Principal Con
 
 Source names resolve against full names and aliases. A missing identity blocks export/publication and opens the create/match workflow. New employees default after existing employees in the same department/grade band. Abbreviation collisions are shown and block output. The primary UI supports add, edit, future assignment change, deactivate and alias management. Changes save automatically; no monthly import is required.
 
-Backup and restore are deliberately secondary controls. Download a controlled backup before clearing browser/site data or moving workstation, then restore it once on the replacement workstation. Refresh and browser reopening retain the register under normal browser-storage policy.
+The normal workflow shows only the employee count and **Manage employee list**. Opening it reveals Edit, Deactivate and Add employee controls; advanced within-grade ordering and **Manage / replace Employee Register** backup controls remain secondary. Download a controlled backup before clearing browser/site data or moving workstation, then validate and replace from that backup once on the replacement workstation. Malformed replacement data is rejected without overwriting the current in-memory register. Refresh and browser reopening retain the register under normal browser-storage policy.
+
+Older workbook abbreviations may be mapped to inactive/former register entries during historical review. That mapping is stored separately from the register, applies to equivalent unchanged headings, and does not reactivate the employee or make them appear in the current staff list.
 
 Any confidential starter register remains operational input outside this repository. Do not copy it into Git, CI artifacts, Pages, screenshots or documentation.

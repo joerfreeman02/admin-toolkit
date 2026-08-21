@@ -152,52 +152,23 @@ export function EmployeeRegisterPanel({ register, month, onChange }: Props) {
 
   return (
     <section
-      className="workflow-section"
+      className="workbook-area"
       aria-labelledby="employee-register-title"
     >
       <div className="section-heading">
         <div>
-          <span className="step-number">2</span>
           <div>
-            <p className="eyebrow">Protected workstation data</p>
             <h3 id="employee-register-title">Employee Register</h3>
           </div>
         </div>
         <strong className="persistence-status">
-          {snapshots.filter((employee) => employee.active).length} employees ·
-          Saved on this workstation
+          {snapshots.filter((employee) => employee.active).length} employees —
+          ready
         </strong>
       </div>
       <p className="muted">
-        Import the starter register once, then add, edit, promote or deactivate
-        employees here. Changes persist automatically; no monthly re-import is
-        required. Effective months keep historical outputs interpretable.
+        The list is saved on this workstation and is ready each month.
       </p>
-      <details className="backup-restore">
-        <summary>Backup &amp; restore</summary>
-        <p className="muted">
-          Download a backup before clearing browser storage or moving to a new
-          workstation. Restore that backup once on the replacement workstation.
-        </p>
-        <div className="button-row">
-          <label className="secondary-button file-button">
-            Restore backup
-            <input
-              aria-label="Import Employee Register"
-              type="file"
-              accept=".json,application/json"
-              onChange={(event) => importRegister(event.target.files?.[0])}
-            />
-          </label>
-          <button
-            type="button"
-            onClick={exportRegister}
-            disabled={!register.employees.length}
-          >
-            Download backup
-          </button>
-        </div>
-      </details>
       {collisions.length > 0 && (
         <p className="error" role="alert">
           Abbreviation collision: {collisions.join(", ")}. Resolve before
@@ -205,135 +176,165 @@ export function EmployeeRegisterPanel({ register, month, onChange }: Props) {
         </p>
       )}
       {message && <p className="status-message">{message}</p>}
-      {snapshots.length ? (
-        <div className="table-wrap register-table">
-          <table>
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Abbreviation</th>
-                <th>Department</th>
-                <th>Grade</th>
-                <th>Order</th>
-                <th>Status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {snapshots.map((employee) => (
-                <tr key={employee.id}>
-                  <td>{employee.fullName}</td>
-                  <td>{employee.abbreviation}</td>
-                  <td>{employee.department}</td>
-                  <td>{employee.grade}</td>
-                  <td>{employee.withinBandOrder}</td>
-                  <td>{employee.active ? "Active" : "Inactive"}</td>
-                  <td className="button-row">
-                    <button
-                      type="button"
-                      onClick={() => beginEdit(employee.id)}
-                    >
-                      Edit
-                    </button>
-                    {employee.active && (
-                      <button
-                        type="button"
-                        onClick={() => deactivate(employee.id)}
-                      >
-                        Deactivate
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <div className="empty-state">
-          No employees are configured for this month.
-        </div>
-      )}
-      <details className="editor" open={!!editingId}>
-        <summary>{editingId ? "Edit employee" : "Add employee"}</summary>
-        <form className="form-grid" onSubmit={save}>
-          <label>
-            Full name
-            <input
-              value={fullName}
-              onChange={(event) => setFullName(event.target.value)}
-              required
-            />
-          </label>
-          <label>
-            Aliases / known names
-            <input
-              value={aliases}
-              onChange={(event) => setAliases(event.target.value)}
-              placeholder="Comma separated"
-            />
-          </label>
-          <label>
-            Department
-            <select
-              value={department}
-              onChange={(event) =>
-                setDepartment(event.target.value as Department)
-              }
+      <details className="employee-manager">
+        <summary>Manage employee list</summary>
+        <details className="backup-restore">
+          <summary>Manage / replace Employee Register</summary>
+          <p className="muted">
+            Download a backup before clearing browser storage or moving to a new
+            workstation. Restore that backup once on the replacement
+            workstation.
+          </p>
+          <div className="button-row">
+            <label className="secondary-button file-button">
+              Replace from backup
+              <input
+                aria-label="Import Employee Register"
+                type="file"
+                accept=".json,application/json"
+                onChange={(event) => importRegister(event.target.files?.[0])}
+              />
+            </label>
+            <button
+              type="button"
+              onClick={exportRegister}
+              disabled={!register.employees.length}
             >
-              {DEPARTMENTS.map((item) => (
-                <option key={item}>{item}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Grade
-            <select
-              value={grade}
-              onChange={(event) => setGrade(event.target.value as Grade)}
-            >
-              {GRADES.map((item) => (
-                <option key={item}>{item}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Approved abbreviation
-            <input
-              value={abbreviation}
-              onChange={(event) => setAbbreviation(event.target.value)}
-              required
-            />
-          </label>
-          <label>
-            Effective month
-            <input
-              type="month"
-              value={effectiveFrom}
-              onChange={(event) => setEffectiveFrom(event.target.value)}
-              required
-            />
-          </label>
-          <label>
-            Within-grade order
-            <input
-              type="number"
-              min="0"
-              value={withinBandOrder}
-              onChange={(event) =>
-                setWithinBandOrder(Number(event.target.value))
-              }
-            />
-          </label>
-          <div className="button-row form-actions">
-            <button className="primary" type="submit">
-              {editingId ? "Save effective change" : "Add employee"}
-            </button>
-            <button type="button" onClick={clearForm}>
-              Clear
+              Download backup
             </button>
           </div>
-        </form>
+        </details>
+        {snapshots.length ? (
+          <div className="table-wrap register-table">
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Abbreviation</th>
+                  <th>Department</th>
+                  <th>Grade</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {snapshots.map((employee) => (
+                  <tr key={employee.id}>
+                    <td>{employee.fullName}</td>
+                    <td>{employee.abbreviation}</td>
+                    <td>{employee.department}</td>
+                    <td>{employee.grade}</td>
+                    <td>{employee.active ? "Active" : "Inactive"}</td>
+                    <td className="button-row">
+                      <button
+                        type="button"
+                        onClick={() => beginEdit(employee.id)}
+                      >
+                        Edit
+                      </button>
+                      {employee.active && (
+                        <button
+                          type="button"
+                          onClick={() => deactivate(employee.id)}
+                        >
+                          Deactivate
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="empty-state">
+            No employees are configured for this month.
+          </div>
+        )}
+        <details className="editor" open={!!editingId}>
+          <summary>{editingId ? "Edit employee" : "Add employee"}</summary>
+          <form className="form-grid" onSubmit={save}>
+            <label>
+              Full name
+              <input
+                value={fullName}
+                onChange={(event) => setFullName(event.target.value)}
+                required
+              />
+            </label>
+            <label>
+              Aliases / known names
+              <input
+                value={aliases}
+                onChange={(event) => setAliases(event.target.value)}
+                placeholder="Comma separated"
+              />
+            </label>
+            <label>
+              Department
+              <select
+                value={department}
+                onChange={(event) =>
+                  setDepartment(event.target.value as Department)
+                }
+              >
+                {DEPARTMENTS.map((item) => (
+                  <option key={item}>{item}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Grade
+              <select
+                value={grade}
+                onChange={(event) => setGrade(event.target.value as Grade)}
+              >
+                {GRADES.map((item) => (
+                  <option key={item}>{item}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Approved abbreviation
+              <input
+                value={abbreviation}
+                onChange={(event) => setAbbreviation(event.target.value)}
+                required
+              />
+            </label>
+            <label>
+              Effective month
+              <input
+                type="month"
+                value={effectiveFrom}
+                onChange={(event) => setEffectiveFrom(event.target.value)}
+                required
+              />
+            </label>
+            <details className="advanced-field">
+              <summary>Advanced ordering</summary>
+              <label>
+                Within-grade order
+                <input
+                  type="number"
+                  min="0"
+                  value={withinBandOrder}
+                  onChange={(event) =>
+                    setWithinBandOrder(Number(event.target.value))
+                  }
+                />
+              </label>
+            </details>
+            <div className="button-row form-actions">
+              <button className="primary" type="submit">
+                {editingId ? "Save effective change" : "Add employee"}
+              </button>
+              <button type="button" onClick={clearForm}>
+                Clear
+              </button>
+            </div>
+          </form>
+        </details>
       </details>
     </section>
   );

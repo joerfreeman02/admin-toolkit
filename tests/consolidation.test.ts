@@ -338,6 +338,122 @@ describe("classification review and consolidation", () => {
     });
   });
 
+  it("reconciles identified, internal, unknown and excluded hours without loss or double-counting", () => {
+    const unknown = entry(
+      "Employee Alpha",
+      "Unknown Project",
+      1.25,
+      "exception",
+      7,
+    );
+    const excluded = entry(
+      "Employee Beta",
+      "Duplicate line",
+      0.75,
+      "exception",
+      8,
+    );
+    const reviewed = applyUncodedDecisions(
+      [
+        entry("Employee Alpha", "Study", 2, "project", 5, "2101"),
+        entry("Employee Beta", "Training", 1, "internal", 6, "10002"),
+        unknown,
+        excluded,
+      ],
+      new Map([
+        [entryReviewKey(unknown), { kind: "unknown-project" as const }],
+        [
+          entryReviewKey(excluded),
+          { kind: "excluded" as const, reason: "Duplicate entry" },
+        ],
+      ]),
+    );
+    const result = consolidateEntries(reviewed, register(), "2026-07");
+
+    expect(result).toMatchObject({
+      projectHours: 2,
+      internalHours: 1,
+      unknownHours: 1.25,
+      excludedHours: 0.75,
+      exceptionHours: 0,
+      importedHours: 5,
+      reconciles: true,
+      canExport: true,
+    });
+    expect(Object.values(result.unknownHoursByEmployee)).toEqual([1.25]);
+    expect(Object.values(result.excludedHoursByEmployee)).toEqual([0.75]);
+    expect(reviewed.map((item) => item.description)).toEqual([
+      "Study",
+      "Training",
+      "Unknown Project",
+      "Duplicate line",
+    ]);
+  });
+
+  it("accepts only an authorised internal category supplied in the explicit decision", () => {
+    const source = entry(
+      "Employee Alpha",
+      "17.25hrs in lieu from June",
+      17.25,
+      "exception",
+      9,
+    );
+    const reviewed = applyUncodedDecisions(
+      [source],
+      new Map([
+        [
+          entryReviewKey(source),
+          {
+            kind: "internal" as const,
+            internalCode: "10008",
+            internalCategory: "Time in Lieu",
+          },
+        ],
+      ]),
+    );
+    const result = consolidateEntries(reviewed, register(), "2026-07");
+    expect(reviewed[0]).toMatchObject({
+      classification: "internal",
+      projectCode: "10008",
+      internalCategory: "Time in Lieu",
+    });
+    expect(result.internal[0]).toMatchObject({
+      code: "10008",
+      description: "Time in Lieu",
+      total: 17.25,
+    });
+    expect(result.canExport).toBe(true);
+  });
+
+  it("keeps one-click Time in Lieu separate from coded internal categories and reconciled", () => {
+    const source = entry(
+      "Employee Alpha",
+      "17.25hrs in lieu from June",
+      17.25,
+      "exception",
+      10,
+    );
+    const reviewed = applyUncodedDecisions(
+      [entry("Employee Beta", "Training", 1, "internal", 6, "10002"), source],
+      new Map([[entryReviewKey(source), { kind: "time-in-lieu" as const }]]),
+    );
+    const result = consolidateEntries(reviewed, register(), "2026-07");
+
+    expect(reviewed[1]).toMatchObject({
+      classification: "time-in-lieu",
+      internalCategory: "Time in Lieu",
+      projectCode: undefined,
+    });
+    expect(result).toMatchObject({
+      internalHours: 1,
+      timeInLieuHours: 17.25,
+      importedHours: 18.25,
+      reconciles: true,
+      canExport: true,
+    });
+    expect(Object.values(result.timeInLieuHoursByEmployee)).toEqual([17.25]);
+  });
+
   it("flags an unknown employee without discarding their imported hours", () => {
     const result = consolidateEntries(
       [entry("New Starter", "Study", 2, "project", 5, "2101")],
