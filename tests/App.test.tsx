@@ -24,13 +24,16 @@ it("redirects admin navigation to the workstation gate", () => {
   expect(
     screen.getByRole("heading", { name: "Administrative access" }),
   ).toBeVisible();
+  expect(screen.getByLabelText("Access code")).toBeVisible();
+  expect(screen.getByRole("button", { name: "Unlock NEXUS" })).toBeVisible();
+  expect(screen.queryByText(/server-grade|public deployment/i)).toBeNull();
 });
 
 it("honours and resets remembered workstation state", () => {
   localStorage.setItem("eas-admin-authorised", "true");
   render(<App />);
   fireEvent.click(screen.getByRole("button", { name: "Admin Processing" }));
-  expect(screen.getByText("Monthly timesheet consolidation")).toBeVisible();
+  expect(screen.getByText("Create this month's hours reports")).toBeVisible();
   fireEvent.click(screen.getByText("Logout / reset"));
   expect(localStorage.getItem("eas-admin-authorised")).toBeNull();
 });
@@ -39,11 +42,25 @@ it("presents a workstation-persistent Employee Register with secondary backup co
   localStorage.setItem("eas-admin-authorised", "true");
   render(<App />);
   fireEvent.click(screen.getByRole("button", { name: "Admin Processing" }));
+  expect(screen.getByText(/employees — ready/)).toBeVisible();
+  expect(screen.getByText(/ready each month/i)).toBeVisible();
+  expect(screen.getByText("Manage employee list")).toBeVisible();
   expect(
-    screen.getByText(/employees · Saved on this workstation/),
+    screen.getByText("Manage / replace Employee Register"),
+  ).not.toBeVisible();
+  fireEvent.click(screen.getByText("Manage employee list"));
+  expect(screen.getByText("Manage / replace Employee Register")).toBeVisible();
+  expect(screen.getByText("July 2026")).toBeVisible();
+});
+
+it("uses plain business language on the dashboard", () => {
+  render(<App />);
+  expect(
+    screen.getByRole("heading", {
+      name: "Monthly timesheets turned into clear, ready-to-use reports.",
+    }),
   ).toBeVisible();
-  expect(screen.getByText(/no monthly re-import is required/i)).toBeVisible();
-  expect(screen.getByText("Backup & restore")).toBeVisible();
+  expect(screen.queryByText(/effective-dated|Synthetic viewer/i)).toBeNull();
 });
 
 it("shows permanent creator attribution and the approved portrait alternative text", () => {
@@ -58,9 +75,9 @@ it("shows permanent creator attribution and the approved portrait alternative te
   ).toBeVisible();
 });
 
-it("shows Sprint 1 version and build information", () => {
+it("shows NEXUS 1.0A release-candidate version and build information", () => {
   render(<App />);
-  fireEvent.click(screen.getByRole("button", { name: /ADMIN-0.2.0/ }));
-  expect(screen.getByText("TIME-0.2.0")).toBeVisible();
-  expect(screen.getByText("Sprint 1")).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: /NEXUS-1.0.0-rc.2/ }));
+  expect(screen.getByText("TIME-1.0.0-rc.2")).toBeVisible();
+  expect(screen.getByText("Sprint 1.0A.3")).toBeVisible();
 });

@@ -1,6 +1,10 @@
 import { webcrypto } from "node:crypto";
 import { beforeAll, describe, expect, it } from "vitest";
-import { consolidateEntries } from "../src/consolidation";
+import {
+  applyUncodedDecisions,
+  consolidateEntries,
+  entryReviewKey,
+} from "../src/consolidation";
 import type { EmployeeRegister, TimeEntry } from "../src/domain";
 import { addEmployee, emptyEmployeeRegister } from "../src/employeeRegister";
 import {
@@ -82,6 +86,65 @@ describe("encrypted Employee Viewer publication", () => {
     expect(decodePublicationFragment(fragment)).toEqual(publication);
   });
 
+  it("publishes neutral Unknown and Excluded totals without protected source wording", () => {
+    const unknown = {
+      ...entry(),
+      projectCode: undefined,
+      description: "Sensitive client discussion that must stay private",
+      classification: "exception" as const,
+      trace: {
+        file: "private-timesheet.xlsx",
+        worksheet: "Jul 26",
+        row: 22,
+      },
+    };
+    const excluded = {
+      ...unknown,
+      description: "Private exclusion reason",
+      hours: 1.25,
+      trace: { ...unknown.trace, row: 23 },
+    };
+    const reviewed = applyUncodedDecisions(
+      [unknown, excluded],
+      new Map([
+        [entryReviewKey(unknown), { kind: "unknown-project" as const }],
+        [
+          entryReviewKey(excluded),
+          { kind: "excluded" as const, reason: "Management-only reason" },
+        ],
+      ]),
+    );
+    const dataset = createEmployeeDataset(
+      consolidateEntries(reviewed, register(), "2026-07"),
+    );
+    expect(dataset.projects).toEqual([]);
+    expect(dataset.statuses).toEqual([
+      {
+        employee: "Employee Alpha",
+        kind: "unknown-project",
+        hours: 2.25,
+      },
+      { employee: "Employee Alpha", kind: "excluded", hours: 1.25 },
+    ]);
+    expect(JSON.stringify(dataset)).not.toMatch(
+      /Sensitive client|Private exclusion|Management-only|private-timesheet|row/,
+    );
+  });
+
+  it("keeps Time in Lieu entirely out of the Employee Viewer dataset", () => {
+    const timeInLieu = {
+      ...entry("time-in-lieu"),
+      projectCode: undefined,
+      description: "17.25hrs in lieu from June",
+      internalCategory: "Time in Lieu",
+    };
+    const dataset = createEmployeeDataset(
+      consolidateEntries([timeInLieu], register(), "2026-07"),
+    );
+    expect(dataset).toMatchObject({ projects: [], statuses: [] });
+    expect(JSON.stringify(dataset)).not.toMatch(/Time in Lieu|17\.25|lieu/i);
+  });
+
   it("rejects a wrong token and authenticated-ciphertext tampering", async () => {
     const dataset = createEmployeeDataset(
       consolidateEntries([entry()], register(), "2026-07"),
@@ -92,11 +155,15 @@ describe("encrypted Employee Viewer publication", () => {
     await expect(
       decryptEmployeePublication(publication, generateEmployeeViewerToken()),
     ).rejects.toThrow(/incorrect|damaged/);
+    const tamperIndex = Math.floor(publication.ciphertext.length / 2);
+    const tamperedCiphertext = `${publication.ciphertext.slice(0, tamperIndex)}${
+      publication.ciphertext[tamperIndex] === "A" ? "B" : "A"
+    }${publication.ciphertext.slice(tamperIndex + 1)}`;
     await expect(
       decryptEmployeePublication(
         {
           ...publication,
-          ciphertext: `${publication.ciphertext.slice(0, -1)}A`,
+          ciphertext: tamperedCiphertext,
         },
         token,
       ),

@@ -2,6 +2,8 @@ import type { Fill, Style, Worksheet } from "exceljs";
 import type {
   ConsolidationResult,
   EmployeeRegister,
+  HistoricalCarryRecord,
+  ProjectConsolidationRow,
   TimeEntry,
 } from "./domain";
 import { resolveEmployee } from "./employeeRegister";
@@ -152,11 +154,30 @@ function applyBodyBorder(style: Partial<Style>) {
   } as Partial<Style>;
 }
 
+function mergeHistoricalUnknownCarry(
+  result: ConsolidationResult,
+  historicalCarry: HistoricalCarryRecord[],
+) {
+  const hoursByEmployee = { ...result.unknownHoursByEmployee };
+  const knownEmployeeIds = new Set(
+    result.employees.map((employee) => employee.id),
+  );
+  let total = result.unknownHours;
+  for (const record of historicalCarry.filter((item) => !item.projectCode)) {
+    total += record.hours;
+    if (knownEmployeeIds.has(record.employeeId))
+      hoursByEmployee[record.employeeId] =
+        (hoursByEmployee[record.employeeId] ?? 0) + record.hours;
+  }
+  return { hoursByEmployee, total };
+}
+
 function applyProjectLayout(
   sheet: Worksheet,
   result: ConsolidationResult,
   profile: TemplateProfile,
   buildId: string,
+  historicalCarry: HistoricalCarryRecord[],
 ) {
   const firstEmployeeColumn = 4;
   const carryColumn = firstEmployeeColumn + result.employees.length;
@@ -222,7 +243,45 @@ function applyProjectLayout(
   }
   sheet.getRow(headerRow).height = 44;
 
-  result.projects.forEach((project, index) => {
+  const carryByProject = new Map<string, HistoricalCarryRecord[]>();
+  for (const record of historicalCarry) {
+    if (!record.projectCode) continue;
+    carryByProject.set(record.projectCode, [
+      ...(carryByProject.get(record.projectCode) ?? []),
+      record,
+    ]);
+  }
+  const outputProjects: ProjectConsolidationRow[] = [...result.projects];
+  const currentCodes = new Set(
+    result.projects.flatMap((project) => (project.code ? [project.code] : [])),
+  );
+  for (const [projectCode, records] of carryByProject) {
+    if (currentCodes.has(projectCode)) continue;
+    const latest = [...records]
+      .sort((a, b) => a.originatingMonth.localeCompare(b.originatingMonth))
+      .at(-1)!;
+    outputProjects.push({
+      key: `historical-carry:${projectCode}`,
+      code: projectCode,
+      description:
+        latest.projectDescription ??
+        "Description unavailable in source workbook",
+      approvedUncoded: false,
+      hoursByEmployee: {},
+      total: 0,
+      traces: [],
+    });
+  }
+  outputProjects.sort((a, b) =>
+    a.code && b.code
+      ? Number(a.code) - Number(b.code)
+      : a.code
+        ? -1
+        : b.code
+          ? 1
+          : a.description.localeCompare(b.description),
+  );
+  outputProjects.forEach((project, index) => {
     const rowNumber = firstDataRow + index;
     const row = sheet.getRow(rowNumber);
     row.height = 19;
@@ -243,16 +302,92 @@ function applyProjectLayout(
       cell.alignment = { horizontal: "center", vertical: "middle" };
     });
     const carry = row.getCell(carryColumn);
-    carry.value = null;
-    carry.style = applyBodyBorder(profile.textStyle);
-    const notes = row.getCell(notesColumn);
-    notes.value = project.approvedUncoded
-      ? "Approved uncoded project - reviewed for this run"
+    const projectCarry = project.code
+      ? (carryByProject.get(project.code) ?? [])
+      : [];
+    carry.value = projectCarry.length
+      ? projectCarry
+          .map(
+            (record) =>
+              `${monthSheetName(record.originatingMonth)} · ${record.employeeAbbreviation} · ${record.hours.toFixed(2)}h`,
+          )
+          .join("\n")
       : null;
+    carry.style = applyBodyBorder(profile.textStyle);
+    carry.alignment = {
+      horizontal: "left",
+      vertical: "middle",
+      wrapText: true,
+    };
+    if (projectCarry.length) carry.fill = solidFill(FALLBACK.green);
+    const notes = row.getCell(notesColumn);
+    notes.value = projectCarry.length
+      ? "Green carry remains open. See Carry-over Audit for person, month and source."
+      : project.approvedUncoded
+        ? "Approved uncoded project - reviewed for this run"
+        : null;
     notes.style = applyBodyBorder(profile.textStyle);
+    notes.alignment = {
+      horizontal: "left",
+      vertical: "middle",
+      wrapText: true,
+    };
+    if (projectCarry.length)
+      row.height = Math.max(44, 16 * projectCarry.length + 20);
     if (project.approvedUncoded)
       for (let column = 2; column <= notesColumn; column++)
         row.getCell(column).fill = solidFill("FFFFF2CC");
+  });
+  const unknownCarry = mergeHistoricalUnknownCarry(result, historicalCarry);
+  const specialRows = [
+    {
+      label: "Time in Lieu",
+      hoursByEmployee: result.timeInLieuHoursByEmployee,
+      total: result.timeInLieuHours,
+      fill: "FFE2F0D9",
+      note: "Authorised non-project Time in Lieu; excluded from identified-project billing totals.",
+    },
+    {
+      label: "Unallocated / Unknown Project",
+      hoursByEmployee: unknownCarry.hoursByEmployee,
+      total: unknownCarry.total,
+      fill: "FFFFF2CC",
+      note: "Deliberately unresolved project identity; includes any retained historical Unknown carry and is excluded from identified-project billing totals.",
+    },
+    {
+      label: "Excluded / Discarded Hours",
+      hoursByEmployee: result.excludedHoursByEmployee,
+      total: result.excludedHours,
+      fill: "FFFCE8E6",
+      note: "Deliberately excluded from project and internal allocation; retained for reconciliation.",
+    },
+  ];
+  specialRows.forEach((special, index) => {
+    const row = sheet.getRow(firstDataRow + outputProjects.length + index);
+    row.height = special.note.length > 120 ? 56 : 40;
+    row.getCell(2).value = "—";
+    row.getCell(3).value = special.label;
+    row.getCell(2).style = applyBodyBorder(profile.textStyle);
+    row.getCell(3).style = applyBodyBorder(profile.textStyle);
+    result.employees.forEach((employee, employeeIndex) => {
+      const cell = row.getCell(firstEmployeeColumn + employeeIndex);
+      cell.value = special.hoursByEmployee[employee.id] || null;
+      cell.style = applyBodyBorder(profile.numberStyle);
+      cell.numFmt = "0.00";
+      cell.alignment = { horizontal: "center", vertical: "middle" };
+    });
+    row.getCell(carryColumn).value = null;
+    row.getCell(carryColumn).style = applyBodyBorder(profile.textStyle);
+    row.getCell(notesColumn).value = special.note;
+    row.getCell(notesColumn).style = applyBodyBorder(profile.textStyle);
+    row.getCell(notesColumn).alignment = {
+      horizontal: "left",
+      vertical: "middle",
+      wrapText: true,
+    };
+    for (let column = 2; column <= notesColumn; column++)
+      row.getCell(column).fill = solidFill(special.fill);
+    row.getCell(3).font = { ...row.getCell(3).font, bold: true };
   });
   sheet.autoFilter = {
     from: { row: headerRow, column: 2 },
@@ -275,10 +410,67 @@ function applyProjectLayout(
   };
 }
 
+function addCarryAudit(
+  workbook: import("exceljs").Workbook,
+  historicalCarry: HistoricalCarryRecord[],
+) {
+  const sheet = workbook.addWorksheet("Carry-over Audit", {
+    properties: { tabColor: { argb: FALLBACK.green } },
+  });
+  const headers = [
+    "Project number",
+    "Project description",
+    "Employee",
+    "Employee abbreviation",
+    "Department",
+    "Hours",
+    "Originating month",
+    "Originating year",
+    "Source workbook",
+    "Source worksheet",
+    "Source cell",
+    "Source row",
+    "Source column",
+    "Authoritative status",
+  ];
+  sheet.getRow(1).values = headers;
+  styleHeader(sheet.getRow(1), 1, headers.length);
+  sheet.views = [{ state: "frozen", ySplit: 1, topLeftCell: "A2" }];
+  historicalCarry.forEach((record, index) => {
+    sheet.getRow(index + 2).values = [
+      record.projectCode ?? "Unknown Project carry",
+      record.projectDescription ?? null,
+      record.employee,
+      record.employeeAbbreviation,
+      record.department,
+      record.hours,
+      record.originatingMonth,
+      record.originatingYear,
+      record.sourceWorkbook,
+      record.sourceWorksheet,
+      record.sourceCell,
+      record.sourceRow,
+      record.sourceColumn,
+      record.projectCode
+        ? "Carry · green #92D050"
+        : "Unknown Project carry · green #92D050",
+    ];
+    sheet.getCell(index + 2, 6).numFmt = "0.00";
+  });
+  [16, 40, 28, 20, 18, 12, 18, 16, 34, 20, 14, 12, 14, 26].forEach(
+    (width, index) => (sheet.getColumn(index + 1).width = width),
+  );
+  sheet.autoFilter = {
+    from: { row: 1, column: 1 },
+    to: { row: 1, column: headers.length },
+  };
+}
+
 export async function generateProjectWorkbook(
   result: ConsolidationResult,
-  template: ArrayBuffer,
+  latestWorkbook: ArrayBuffer,
   buildId: string,
+  historicalCarry: HistoricalCarryRecord[] = [],
 ): Promise<ArrayBuffer> {
   if (!result.canExport)
     throw new Error(
@@ -286,15 +478,16 @@ export async function generateProjectWorkbook(
     );
   const module = await import("exceljs");
   const ExcelJS = module.default;
-  const profile = await readTemplateProfile(template, result.month);
+  const profile = await readTemplateProfile(latestWorkbook, result.month);
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = "EAS Admin Toolkit - Created by Joe Freeman";
+  workbook.creator = "NEXUS - Created by Joe Freeman";
   workbook.created = new Date();
   workbook.modified = new Date();
   const sheet = workbook.addWorksheet(monthSheetName(result.month), {
     properties: { tabColor: { argb: FALLBACK.navy } },
   });
-  applyProjectLayout(sheet, result, profile, buildId);
+  applyProjectLayout(sheet, result, profile, buildId, historicalCarry);
+  addCarryAudit(workbook, historicalCarry);
   const buffer = await workbook.xlsx.writeBuffer();
   return asArrayBuffer(buffer);
 }
@@ -328,6 +521,7 @@ export async function generateInternalWorkbook(
   entries: TimeEntry[],
   register: EmployeeRegister,
   buildId: string,
+  historicalCarry: HistoricalCarryRecord[] = [],
 ): Promise<ArrayBuffer> {
   if (!result.canExport)
     throw new Error(
@@ -336,7 +530,7 @@ export async function generateInternalWorkbook(
   const module = await import("exceljs");
   const ExcelJS = module.default;
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = "EAS Admin Toolkit - Created by Joe Freeman";
+  workbook.creator = "NEXUS - Created by Joe Freeman";
   workbook.created = new Date();
   workbook.modified = new Date();
   const sheet = workbook.addWorksheet("Internal Hours", {
@@ -346,7 +540,8 @@ export async function generateInternalWorkbook(
   const totalColumn = firstEmployeeColumn + result.employees.length;
   sheet.views = [{ state: "frozen", xSplit: 2, ySplit: 6, topLeftCell: "C7" }];
   sheet.mergeCells(1, 1, 1, totalColumn);
-  sheet.getCell(1, 1).value = `EAS Internal Hours - ${fileMonth(result.month)}`;
+  sheet.getCell(1, 1).value =
+    `NEXUS Internal Hours - ${fileMonth(result.month)}`;
   sheet.getCell(1, 1).font = {
     name: "Aptos Display",
     size: 18,
@@ -408,7 +603,69 @@ export async function generateInternalWorkbook(
   };
   totalRow.getCell(totalColumn).numFmt = "0.00";
   totalRow.font = { bold: true };
-  totalRow.fill = solidFill("FFF4F8DF");
+  for (let column = 1; column <= totalColumn; column++)
+    totalRow.getCell(column).fill = solidFill("FFF4F8DF");
+  const otherHeaderRowNumber = totalRowNumber + 2;
+  sheet.mergeCells(otherHeaderRowNumber, 1, otherHeaderRowNumber, totalColumn);
+  const otherHeader = sheet.getCell(otherHeaderRowNumber, 1);
+  otherHeader.value = "Other non-project hours";
+  otherHeader.fill = solidFill(FALLBACK.navy);
+  otherHeader.font = { bold: true, color: { argb: "FFFFFFFF" } };
+  const unknownCarry = mergeHistoricalUnknownCarry(result, historicalCarry);
+  const otherRows = [
+    {
+      label: "Time in Lieu",
+      description: "Authorised non-project Time in Lieu",
+      hoursByEmployee: result.timeInLieuHoursByEmployee,
+      total: result.timeInLieuHours,
+      fill: "FFE2F0D9",
+    },
+    {
+      label: "Unknown / Unallocated",
+      description:
+        "Project identity deliberately left unknown, including retained historical Unknown carry",
+      hoursByEmployee: unknownCarry.hoursByEmployee,
+      total: unknownCarry.total,
+      fill: "FFFFF2CC",
+    },
+    {
+      label: "Excluded / Discarded",
+      description:
+        "Deliberately excluded; retained for audit and reconciliation",
+      hoursByEmployee: result.excludedHoursByEmployee,
+      total: result.excludedHours,
+      fill: "FFFCE8E6",
+    },
+  ];
+  otherRows.forEach((item, index) => {
+    const rowNumber = otherHeaderRowNumber + index + 1;
+    const row = sheet.getRow(rowNumber);
+    row.height = item.description.length > 55 ? 40 : 24;
+    row.getCell(1).value = item.label;
+    row.getCell(2).value = item.description;
+    row.getCell(2).alignment = {
+      horizontal: "left",
+      vertical: "middle",
+      wrapText: true,
+    };
+    result.employees.forEach((employee, employeeIndex) => {
+      const cell = row.getCell(firstEmployeeColumn + employeeIndex);
+      cell.value = item.hoursByEmployee[employee.id] || null;
+      cell.numFmt = "0.00";
+      cell.alignment = { horizontal: "center" };
+    });
+    row.getCell(totalColumn).value = {
+      formula: `SUM(${columnLetter(firstEmployeeColumn)}${rowNumber}:${columnLetter(totalColumn - 1)}${rowNumber})`,
+      result: item.total,
+    };
+    row.getCell(totalColumn).numFmt = "0.00";
+    for (let column = 1; column <= totalColumn; column++) {
+      row.getCell(column).fill = solidFill(item.fill);
+      row.getCell(column).border = {
+        bottom: { style: "thin", color: { argb: "FFD5DDD9" } },
+      };
+    }
+  });
   sheet.autoFilter = {
     from: { row: 6, column: 1 },
     to: { row: 6, column: totalColumn },
@@ -450,25 +707,40 @@ export async function generateInternalWorkbook(
       : undefined;
     const uncodedDecision = entry.uncodedDecision;
     const canonicalDescription =
-      uncodedDecision?.projectDescription ??
-      descriptionDecision?.canonicalDescription ??
-      null;
+      uncodedDecision?.kind === "existing-project" ||
+      uncodedDecision?.kind === "genuine-uncoded"
+        ? uncodedDecision.projectDescription
+        : (descriptionDecision?.canonicalDescription ?? null);
     const decisionText =
       uncodedDecision?.kind === "existing-project"
         ? `Matched to existing project ${uncodedDecision.projectCode}`
         : uncodedDecision?.kind === "genuine-uncoded"
           ? "Confirmed as a genuine uncoded project"
-          : descriptionDecision?.resolved
-            ? "Resolved to observed source description"
-            : descriptionDecision
-              ? "Unresolved conflict"
-              : null;
+          : uncodedDecision?.kind === "internal"
+            ? `Matched to internal category ${uncodedDecision.internalCategory}`
+            : uncodedDecision?.kind === "time-in-lieu"
+              ? "Matched to Time in Lieu"
+              : uncodedDecision?.kind === "unknown-project"
+                ? "Deliberately left as Unknown Project"
+                : uncodedDecision?.kind === "excluded"
+                  ? `Deliberately excluded${uncodedDecision.reason ? `: ${uncodedDecision.reason}` : ""}`
+                  : descriptionDecision?.resolved
+                    ? "Resolved to observed source description"
+                    : descriptionDecision
+                      ? "Unresolved conflict"
+                      : null;
     const destination =
       entry.classification === "internal"
         ? "Internal Hours workbook"
-        : entry.classification === "project"
-          ? "Hours for Invoicing workbook"
-          : "Protected exception - no export";
+        : entry.classification === "time-in-lieu"
+          ? "Time in Lieu rows in both private reports"
+          : entry.classification === "project"
+            ? "Hours for Invoicing workbook"
+            : entry.classification === "unknown"
+              ? "Unknown / Unallocated rows in both private reports"
+              : entry.classification === "excluded"
+                ? "Excluded / Discarded rows in both private reports"
+                : "Protected exception - no export";
     audit.getRow(index + 2).values = [
       entry.trace.file,
       entry.trace.worksheet,
@@ -488,11 +760,17 @@ export async function generateInternalWorkbook(
         ? `Matched project ${uncodedDecision.projectCode}`
         : entry.approvedUncoded
           ? "Approved uncoded project"
-          : entry.classification,
+          : entry.classification === "unknown"
+            ? "Unknown / Unallocated"
+            : entry.classification === "excluded"
+              ? "Excluded / Discarded"
+              : entry.classification === "time-in-lieu"
+                ? "Time in Lieu"
+                : entry.classification,
       destination,
     ];
   });
-  [24, 18, 11, 24, 18, 14, 34, 18, 34, 30, 18, 16, 12, 24, 27].forEach(
+  [44, 18, 11, 24, 18, 14, 34, 18, 34, 30, 18, 16, 12, 24, 27].forEach(
     (width, index) => (audit.getColumn(index + 1).width = width),
   );
   audit.getColumn(11).numFmt = "0.00";

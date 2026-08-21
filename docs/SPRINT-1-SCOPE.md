@@ -1,5 +1,7 @@
 # Sprint 1 scope
 
+> Historical record: this documents the pre-NEXUS `ADMIN-0.2.0 / TIME-0.2.0` candidate. The current controlled scope and migration are documented in the repository README, architecture and NEXUS 1.0A manual acceptance files.
+
 Version: `ADMIN-0.2.0 / TIME-0.2.0`. Status: controlled acceptance candidate, not accepted or frozen.
 
 ## Included

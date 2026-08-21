@@ -3,6 +3,7 @@ import { AdminProcessing } from "./AdminProcessing";
 import type { EmployeeRegister } from "./domain";
 import { loadEmployeeRegister, saveEmployeeRegister } from "./employeeRegister";
 import { PublicViewer } from "./PublicViewer";
+import { migrateWorkstationStore } from "./workstationStore";
 import creatorPortrait from "./assets/joe-freeman.png";
 import "./styles.css";
 
@@ -28,11 +29,11 @@ function AdminGate({ onAuthorise }: { onAuthorise: () => void }) {
       | string
       | undefined;
     if (!expected) {
-      setError("Administrative access is not configured in this build.");
+      setError("NEXUS access is not configured on this computer.");
       return;
     }
     if ((await sha256(token)) !== expected) {
-      setError("Token not recognised.");
+      setError("Access code not recognised.");
       return;
     }
     localStorage.setItem(AUTH_KEY, "true");
@@ -43,13 +44,12 @@ function AdminGate({ onAuthorise }: { onAuthorise: () => void }) {
       <p className="eyebrow">Protected workstation workflow</p>
       <h2>Administrative access</h2>
       <p>
-        This browser-only workstation gate is not server-grade authentication.
-        Confidentiality depends on keeping source and internal data out of the
-        public deployment.
+        Enter the NEXUS access code for this computer. NEXUS will remember this
+        authorised workstation until you sign out or reset access.
       </p>
       <form onSubmit={submit}>
         <label>
-          Administrative token
+          Access code
           <input
             type="password"
             autoComplete="current-password"
@@ -62,7 +62,7 @@ function AdminGate({ onAuthorise }: { onAuthorise: () => void }) {
             {error}
           </p>
         )}
-        <button className="primary">Authorise this workstation</button>
+        <button className="primary">Unlock NEXUS</button>
       </form>
     </section>
   );
@@ -71,12 +71,13 @@ function AdminGate({ onAuthorise }: { onAuthorise: () => void }) {
 function About() {
   return (
     <section className="panel about-page">
-      <p className="eyebrow">About the Toolkit</p>
+      <p className="eyebrow">About NEXUS</p>
       <h2>Operational automation with professional control</h2>
       <p>
-        Sprint 1 consolidates timesheets locally, separates confidential
-        internal hours, and generates controlled Excel outputs. Commercial
-        invoice, rate and carryover decisions remain outside this sprint.
+        NEXUS consolidates timesheets locally, separates confidential internal
+        hours, and carries forward only the person-level historical hours that
+        the saved financial-year workbooks still mark green. Invoice and rate
+        decisions remain outside this sprint.
       </p>
       <section className="creator-section" aria-labelledby="creator-title">
         <img src={creatorPortrait} alt="Portrait of Joe Freeman" />
@@ -124,6 +125,11 @@ export default function App() {
   );
   useEffect(() => saveEmployeeRegister(register), [register]);
   useEffect(() => {
+    void migrateWorkstationStore().catch(() => {
+      // Persistence failures remain visible when a protected store is used.
+    });
+  }, []);
+  useEffect(() => {
     const openEmployeePublication = () => {
       if (location.hash.startsWith("#employee-viewer=")) setView("viewer");
     };
@@ -143,7 +149,7 @@ export default function App() {
         <div className="brand">
           <div className="mark">EAS</div>
           <div>
-            <strong>EAS Admin Toolkit</strong>
+            <strong>NEXUS</strong>
             <span>Timesheet and Invoicing Hours</span>
           </div>
         </div>
@@ -157,29 +163,25 @@ export default function App() {
       <main>
         {view === "home" && (
           <section className="hero">
-            <p className="eyebrow">
-              Sprint 1 - operational development candidate
-            </p>
-            <h1>
-              Monthly timesheets consolidated with every hour accounted for.
-            </h1>
+            <p className="eyebrow">NEXUS 1.0A - controlled release candidate</p>
+            <h1>Monthly timesheets turned into clear, ready-to-use reports.</h1>
             <p>
-              Maintain an effective-dated Employee Register, review exceptions,
-              reconcile project and internal time, and generate separate Excel
-              workbooks without uploading confidential files.
+              NEXUS checks the month&apos;s timesheets, helps with anything it
+              cannot identify, and creates the project-hours information staff
+              need to prepare invoices.
             </p>
             <div className="cards">
               <button onClick={nav("admin")}>
                 <span>Protected</span>
-                <strong>Monthly consolidation</strong>
+                <strong>Create monthly reports</strong>
                 <small>
-                  Employee Register, review, reconciliation and Excel outputs
+                  Check timesheets and download project and internal-hours files
                 </small>
               </button>
               <button onClick={nav("viewer")}>
-                <span>Public</span>
-                <strong>Synthetic viewer</strong>
-                <small>No real employee or project-hour publication</small>
+                <span>Employees</span>
+                <strong>View approved project hours</strong>
+                <small>Open information that has been approved for staff</small>
               </button>
             </div>
           </section>
@@ -201,20 +203,20 @@ export default function App() {
             <h2>Build information</h2>
             <dl>
               <dt>Product</dt>
-              <dd>ADMIN-0.2.0</dd>
+              <dd>NEXUS-1.0.0-rc.2</dd>
               <dt>Module</dt>
-              <dd>TIME-0.2.0</dd>
+              <dd>TIME-1.0.0-rc.2</dd>
               <dt>Build</dt>
               <dd>{__BUILD_ID__}</dd>
               <dt>Sprint</dt>
-              <dd>Sprint 1</dd>
+              <dd>Sprint 1.0A.3</dd>
             </dl>
           </section>
         )}
       </main>
       <footer>
         <button onClick={nav("diagnostics")}>
-          ADMIN-0.2.0 - TIME-0.2.0 - {__BUILD_ID__}
+          NEXUS-1.0.0-rc.2 - TIME-1.0.0-rc.2 - {__BUILD_ID__}
         </button>
         <span>Created by Joe Freeman</span>
         <span>Files remain on this workstation.</span>

@@ -1,37 +1,32 @@
-# Testing
+# Testing NEXUS
 
-## Automated coverage
-
-Vitest covers parsing/classification, meaningful free-text preservation, EAS filename identity, TIME-DATA-001 auditing, ZIP handling, lineage, Employee Register CRUD/effective dating/ordering/collisions, protected project-catalogue extraction, conservative typo suggestions without automatic acceptance, explicit existing/alternative/genuine-uncoded decisions, prevention of generic grouping, aggregation, conflict resolution, internal separation, reconciliation and styled workbook generation.
-
-Publication tests prove that the minimal dataset excludes internal/source/audit data; unresolved exceptions, conflicts, unknown employees and unreconciled results block publication; the Admin and employee storage keys are separate; encrypted packages/fragments contain no synthetic plaintext values; correct tokens decrypt; wrong tokens and altered ciphertext fail.
-
-Playwright runs Chromium desktop and mobile. It covers the synthetic base viewer, protected route, conflict resolution, Employee Register/session persistence, annual-template IndexedDB import/reload/reopen/reuse/replace/remove, advisory uncoded matching with explicit reversal, output reuse of the stored template, encrypted-fragment handling, wrong/correct Employee Viewer tokens, remembered employee token, employee/project drilldown, confidentiality exclusions, keyboard access and responsive About/creator presentation.
-
-## Required gates
-
-Run from a clean dependency installation:
+Run the controlled checks with Node 22 / pnpm 11:
 
 ```sh
-pnpm install --frozen-lockfile
-pnpm format:check
 pnpm lint
+pnpm format:check
 pnpm typecheck
 pnpm test
-pnpm test:coverage
 pnpm test:e2e
 pnpm build
 pnpm audit --prod
 ```
 
-The production build may emit the existing large-chunk advisory; treat new build errors as failures. CI evidence is reported separately from local evidence and must never be claimed before GitHub Actions completes.
+Vitest covers parsing, exact reconciliation, Employee Register controls, publication privacy and workbook generation. NEXUS 1.0A.3.2 additionally covers advisory one-click Time in Lieu without a fabricated code, private-only Time in Lieu outputs, stable review progress, distinct collapsed Current/Previous FY carry queues, Current FY Unknown Project carry authority, closed-FY Already Dealt With and Unknown Project carry, persistence, human-readable dates and wording regression.
 
-## Workbook verification
+Playwright runs the full scenario set on desktop and mobile. It covers persistent/replaced Job Registers, compact indexed search without a large dropdown, advisory one-click resolutions, safe source download, bounded surrounding-row context, plain report/publication wording, Unknown/Excluded completion, separate persistent historical review, April rollover, encrypted publication and responsive UI.
 
-Synthetic generated project/internal workbooks must be parsed/reopened and every sheet visually rendered before release. Verify structure, formula results, styles, numeric formats, source-versus-canonical audit columns and confidentiality markings. The annual template supplies structure/presentation and catalogue evidence only; synthetic tests prove current-month values originate from timesheets.
+Real fixtures are opt-in and remain outside Git. Set these variables to approved local read-only paths, then run the single acceptance test:
 
-## Confidential local acceptance
+```sh
+NEXUS_ACCEPTANCE_REGISTER=/private/register.json \
+NEXUS_ACCEPTANCE_WORKBOOK=/private/latest.xlsx \
+NEXUS_ACCEPTANCE_PREVIOUS_WORKBOOK=/private/previous-fy.xlsx \
+NEXUS_ACCEPTANCE_TIMESHEETS=/private/timesheets.zip \
+NEXUS_ACCEPTANCE_JOB_REGISTER=/private/job-register.xlsm \
+pnpm exec vitest run tests/realFixtures.test.ts --reporter=verbose
+```
 
-Real-file acceptance is a separate, read-only workstation step. Inputs must be copied by the Product Owner into an approved private local directory outside the repository; the Toolkit must not access network shares. Process the selected month, make only explicit controlled review decisions, compare both generated workbooks against prior outputs/template/source evidence, visually inspect every sheet, and report anonymised counts/results only.
+The acceptance test reports counts only. It validates the register, scans all 16 supplied current/previous workbook months, resolves cross-FY carry where the register permits, processes every timesheet, parses the real Job Register at operating scale and proves its source hash is unchanged without copying fixture data into the repository.
 
-Do not mark this gate passed, merge the correction or deploy it while the required local source copies are unavailable. Never commit confidential inputs, generated outputs, screenshots, logs, plaintext publication data or tokens.
+Generated workbook verification must reopen every output, inspect key values/styles/formulas, and visually render every sheet. Real commercial acceptance remains a separate Product Owner/Technical Director review.

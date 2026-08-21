@@ -94,6 +94,28 @@ export function employeeSnapshot(
     .sort(compareEmployees);
 }
 
+export function latestEmployeeSnapshot(
+  register: EmployeeRegister,
+  includeInactive = true,
+): EmployeeSnapshot[] {
+  return register.employees
+    .flatMap((employee) => {
+      const assignment = [...employee.assignments].sort((a, b) =>
+        b.effectiveFrom.localeCompare(a.effectiveFrom),
+      )[0];
+      if (!assignment || (!assignment.active && !includeInactive)) return [];
+      return [
+        {
+          id: employee.id,
+          fullName: employee.fullName,
+          aliases: employee.aliases,
+          ...assignment,
+        },
+      ];
+    })
+    .sort(compareEmployees);
+}
+
 export function compareEmployees(a: EmployeeSnapshot, b: EmployeeSnapshot) {
   return (
     DEPARTMENTS.indexOf(a.department) - DEPARTMENTS.indexOf(b.department) ||

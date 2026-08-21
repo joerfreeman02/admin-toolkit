@@ -71,6 +71,40 @@ export function applyUncodedDecisions(
         approvedUncoded: true,
         uncodedDecision: decision,
       };
+    if (decision.kind === "internal" && decision.internalCategory.trim())
+      return {
+        ...entry,
+        projectCode: decision.internalCode,
+        internalCategory: decision.internalCategory.trim(),
+        classification: "internal",
+        approvedUncoded: false,
+        uncodedDecision: decision,
+      };
+    if (decision.kind === "time-in-lieu")
+      return {
+        ...entry,
+        projectCode: undefined,
+        internalCategory: "Time in Lieu",
+        classification: "time-in-lieu",
+        approvedUncoded: false,
+        uncodedDecision: decision,
+      };
+    if (decision.kind === "unknown-project")
+      return {
+        ...entry,
+        projectCode: undefined,
+        classification: "unknown",
+        approvedUncoded: false,
+        uncodedDecision: decision,
+      };
+    if (decision.kind === "excluded")
+      return {
+        ...entry,
+        projectCode: undefined,
+        classification: "excluded",
+        approvedUncoded: false,
+        uncodedDecision: decision,
+      };
     return entry;
   });
 }
@@ -100,6 +134,9 @@ export function consolidateEntries(
   const projects = new Map<string, ProjectConsolidationRow>();
   const internal = new Map<string, InternalConsolidationRow>();
   const descriptions = new Map<string, Map<string, TimeEntry["trace"][]>>();
+  const unknownHoursByEmployee: Record<string, number> = {};
+  const excludedHoursByEmployee: Record<string, number> = {};
+  const timeInLieuHoursByEmployee: Record<string, number> = {};
   const unknownEmployees = new Set<string>();
   const unresolved = entries.filter(
     (entry) => entry.classification === "exception",
@@ -169,6 +206,15 @@ export function consolidateEntries(
       row.total += entry.hours;
       row.traces.push(entry.trace);
       internal.set(key, row);
+    } else if (entry.classification === "unknown") {
+      unknownHoursByEmployee[employee.id] =
+        (unknownHoursByEmployee[employee.id] ?? 0) + entry.hours;
+    } else if (entry.classification === "excluded") {
+      excludedHoursByEmployee[employee.id] =
+        (excludedHoursByEmployee[employee.id] ?? 0) + entry.hours;
+    } else if (entry.classification === "time-in-lieu") {
+      timeInLieuHoursByEmployee[employee.id] =
+        (timeInLieuHoursByEmployee[employee.id] ?? 0) + entry.hours;
     }
   }
 
@@ -205,9 +251,9 @@ export function consolidateEntries(
       "Unknown employees must be resolved in the Employee Register.",
     );
   if (unresolved.length)
-    blockers.push("Unresolved exceptions must be reviewed before export.");
+    blockers.push("Some timesheet entries still need a decision.");
   if (descriptionConflicts.some((conflict) => !conflict.resolved))
-    blockers.push("Conflicting project descriptions must be resolved.");
+    blockers.push("Some project names still need a decision.");
   const collisions = abbreviationCollisions(register, month);
   if (collisions.length)
     blockers.push(`Abbreviation collisions: ${collisions.join(", ")}.`);
@@ -238,6 +284,12 @@ export function consolidateEntries(
     descriptionConflicts,
     projectHours: totals.project,
     internalHours: totals.internal,
+    unknownHours: totals.unknown,
+    excludedHours: totals.excluded,
+    timeInLieuHours: totals.timeInLieu,
+    unknownHoursByEmployee,
+    excludedHoursByEmployee,
+    timeInLieuHoursByEmployee,
     exceptionHours: totals.exception,
     importedHours: totals.total,
     reconciles: totals.reconciles,

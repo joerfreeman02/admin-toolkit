@@ -1,6 +1,10 @@
 import * as XLSX from "xlsx";
 import { INTERNAL_CODE_MINIMUM, UNKNOWN_PROJECT_CODE } from "./config";
-import type { ProjectCatalogueItem, TimeEntry } from "./domain";
+import type {
+  InternalCatalogueItem,
+  ProjectCatalogueItem,
+  TimeEntry,
+} from "./domain";
 import { extractProjectCode } from "./processing";
 
 function normalise(value: string) {
@@ -16,6 +20,9 @@ function addItem(
   code: string | undefined,
   description: string,
   source: ProjectCatalogueItem["sources"][number],
+  metadata: Partial<
+    Pick<ProjectCatalogueItem, "client" | "projectManager" | "projectDirector">
+  > = {},
 ) {
   const cleanDescription = description.trim();
   if (
@@ -31,6 +38,9 @@ function addItem(
   values.set(key, {
     code,
     description: cleanDescription,
+    client: metadata.client ?? current?.client,
+    projectManager: metadata.projectManager ?? current?.projectManager,
+    projectDirector: metadata.projectDirector ?? current?.projectDirector,
     sources: current ? [...new Set([...current.sources, source])] : [source],
   });
 }
@@ -77,7 +87,7 @@ export function mergeProjectCatalogues(
 ) {
   const values = new Map<string, ProjectCatalogueItem>();
   for (const item of catalogues.flat())
-    addItem(values, item.code, item.description, item.sources[0]);
+    addItem(values, item.code, item.description, item.sources[0], item);
   for (const item of catalogues.flat()) {
     const key = `${item.code}|${normalise(item.description)}`;
     const current = values.get(key);
@@ -89,6 +99,102 @@ export function mergeProjectCatalogues(
       Number(a.code) - Number(b.code) ||
       a.description.localeCompare(b.description),
   );
+}
+
+export function internalCatalogueFromEntries(entries: TimeEntry[]) {
+  const values = new Map<string, InternalCatalogueItem>();
+  for (const entry of entries) {
+    if (entry.classification !== "internal") continue;
+    const description = (entry.internalCategory ?? entry.description).trim();
+    if (!description) continue;
+    const key = `${entry.projectCode ?? ""}|${normalise(description)}`;
+    values.set(key, {
+      code: entry.projectCode,
+      description,
+      source: "current-timesheets",
+    });
+  }
+  return [...values.values()];
+}
+
+export function internalCatalogueFromAnnualWorkbook(data: ArrayBuffer) {
+  const workbook = XLSX.read(data, { type: "array", cellDates: true });
+  const values = new Map<string, InternalCatalogueItem>();
+  for (const sheetName of workbook.SheetNames) {
+    const sheet = workbook.Sheets[sheetName];
+    const range = XLSX.utils.decode_range(sheet["!ref"] ?? "A1:A1");
+    for (let row = range.s.r; row <= range.e.r; row++) {
+      const rawCode = sheet[XLSX.utils.encode_cell({ r: row, c: 1 })]?.v;
+      const rawDescription = sheet[XLSX.utils.encode_cell({ r: row, c: 2 })]?.v;
+      const code = extractProjectCode(rawCode);
+      const description =
+        typeof rawDescription === "string" ? rawDescription.trim() : "";
+      if (!code || Number(code) < INTERNAL_CODE_MINIMUM || !description)
+        continue;
+      values.set(`${code}|${normalise(description)}`, {
+        code,
+        description,
+        source: "annual-workbook",
+      });
+    }
+  }
+  return [...values.values()].sort((a, b) => Number(a.code) - Number(b.code));
+}
+
+export function mergeInternalCatalogues(
+  ...catalogues: InternalCatalogueItem[][]
+) {
+  const values = new Map<string, InternalCatalogueItem>();
+  for (const item of catalogues.flat())
+    values.set(`${item.code ?? ""}|${normalise(item.description)}`, item);
+  return [...values.values()];
+}
+
+const TIME_IN_LIEU_PATTERN = /\b(?:time\s+in\s+lieu|in\s+lieu|toil)\b/i;
+
+/** Time in Lieu is an authorised NEXUS non-project category, not an EAS code. */
+export function suggestsTimeInLieu(sourceText: string) {
+  // A lone "lieu" is deliberately insufficient to suggest a classification.
+  return TIME_IN_LIEU_PATTERN.test(sourceText);
+}
+
+const INTERNAL_PHRASES: [RegExp, RegExp][] = [
+  [/\b(in lieu|toil)\b/i, /\b(time in lieu|toil)\b/i],
+  [/\b(holiday|annual leave)\b/i, /\b(holiday|annual leave)\b/i],
+  [/\b(sick|sickness)\b/i, /\b(sick|sickness)\b/i],
+  [/\b(research|r&d)\b/i, /\b(research|r&d)\b/i],
+  [/\badmin(?:istration)?\b/i, /\badmin(?:istration)?\b/i],
+  [/\btraining|conference\b/i, /\btraining|conference\b/i],
+  [/\btravel\b/i, /\btravel\b/i],
+  [/\bmarketing\b/i, /\bmarketing\b/i],
+  [/\bteam meeting|project discussion\b/i, /\b(meeting|discussion)\b/i],
+];
+
+export function suggestInternalCategories(
+  sourceText: string,
+  catalogue: InternalCatalogueItem[],
+  limit = 3,
+) {
+  const matches = INTERNAL_PHRASES.filter(([source]) =>
+    source.test(sourceText),
+  );
+  if (!matches.length) return [];
+  return catalogue
+    .map((item) => ({
+      item,
+      score: Math.max(
+        ...matches.map(([, category]) =>
+          category.test(item.description) ? 1 : 0,
+        ),
+      ),
+    }))
+    .filter(({ score }) => score > 0)
+    .sort(
+      (a, b) =>
+        b.score - a.score ||
+        Number(a.item.code ?? Infinity) - Number(b.item.code ?? Infinity),
+    )
+    .slice(0, limit);
 }
 
 function editDistance(left: string, right: string) {
@@ -139,9 +245,76 @@ export function suggestProjects(
       score: Math.max(
         projectSimilarity(sourceText, project.description),
         projectSimilarity(sourceText, `${project.code} ${project.description}`),
+        projectSimilarity(
+          sourceText,
+          [project.client, project.projectManager, project.projectDirector]
+            .filter(Boolean)
+            .join(" "),
+        ),
       ),
     }))
     .filter((item) => item.score >= 0.5)
+    .sort(
+      (a, b) =>
+        b.score - a.score ||
+        Number(a.project.code) - Number(b.project.code) ||
+        a.project.description.localeCompare(b.project.description),
+    )
+    .slice(0, limit);
+}
+
+export interface ProjectSearchIndex {
+  projects: {
+    project: ProjectCatalogueItem;
+    normalized: string;
+  }[];
+}
+
+export function createProjectSearchIndex(
+  catalogue: ProjectCatalogueItem[],
+): ProjectSearchIndex {
+  return {
+    projects: catalogue.map((project) => ({
+      project,
+      normalized: normalise(
+        [
+          project.code,
+          project.description,
+          project.client,
+          project.projectManager,
+          project.projectDirector,
+        ]
+          .filter(Boolean)
+          .join(" "),
+      ),
+    })),
+  };
+}
+
+export function searchProjects(
+  index: ProjectSearchIndex,
+  query: string,
+  limit = 8,
+) {
+  const normalized = normalise(query);
+  if (!normalized) return [];
+  const tokens = normalized.split(" ");
+  return index.projects
+    .map(({ project, normalized: candidate }) => {
+      const code = project.code.toLowerCase();
+      const score =
+        code === normalized
+          ? 4
+          : code.startsWith(normalized)
+            ? 3
+            : code.includes(normalized)
+              ? 2.5
+              : tokens.every((token) => candidate.includes(token))
+                ? 2
+                : 0;
+      return { project, score };
+    })
+    .filter(({ score }) => score >= 0.5)
     .sort(
       (a, b) =>
         b.score - a.score ||

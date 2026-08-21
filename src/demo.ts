@@ -28,5 +28,6 @@ export const demoData: PublicDataset[] = [
         total: 2.5,
       },
     ],
+    statuses: [],
   },
 ];

@@ -167,6 +167,27 @@ function parseEasMonthSheet(
       );
     if (hours === 0 && dailyTotal === 0) continue;
     const trace: SourceTrace = { file, worksheet: sheetName, row: row + 1 };
+    const surroundingRows = [];
+    for (
+      let nearby = Math.max(4, row - 2);
+      nearby <= Math.min(range.e.r, row + 2);
+      nearby++
+    ) {
+      const nearbyCode = extractProjectCode(cellValue(nearby, 0));
+      const nearbyDescription = [cellValue(nearby, 1), cellValue(nearby, 2)]
+        .filter((value) => typeof value === "string" && value.trim())
+        .join(" — ");
+      const nearbyHours = cellValue(nearby, 3);
+      surroundingRows.push({
+        row: nearby + 1,
+        projectNumber: nearbyCode,
+        description: nearbyDescription || undefined,
+        hours:
+          typeof nearbyHours === "number" && Number.isFinite(nearbyHours)
+            ? nearbyHours
+            : undefined,
+      });
+    }
     entries.push({
       employee: employee ?? "Unidentified employee",
       reportingMonth: requestedMonth,
@@ -186,6 +207,21 @@ function parseEasMonthSheet(
       },
       classification: classify(code, description),
       trace,
+      sourceContext: {
+        employee: employee ?? "Unidentified employee",
+        month: requestedMonth,
+        recordedHours: hours,
+        originalProjectNumber: code,
+        originalDescription: description || "Uncoded entry",
+        dailyHours: Object.entries(dailyHours).map(([day, value]) => ({
+          day,
+          hours: value,
+        })),
+        adjacentValues: [descriptionFromCode, unknownText, codeCellText].filter(
+          Boolean,
+        ),
+        surroundingRows,
+      },
     });
   }
   return { entries, employee, warnings };
@@ -247,6 +283,23 @@ export function parseWorkbook(
       },
       classification: classify(code, description, category),
       trace,
+      sourceContext: {
+        employee: employee || text(row, "Employee") || "Unidentified employee",
+        month: requestedMonth,
+        recordedHours: hours,
+        originalProjectNumber: code,
+        originalDescription: description || category || "Unspecified entry",
+        dailyHours: [],
+        adjacentValues: [category].filter(Boolean),
+        surroundingRows: [
+          {
+            row: index + 2,
+            projectNumber: code,
+            description: description || category || undefined,
+            hours,
+          },
+        ],
+      },
     });
   }
   if (
@@ -276,9 +329,9 @@ export async function expandUploads(
     if (file.name.toLowerCase().endsWith(".zip")) {
       const zip = await JSZip.loadAsync(await readFile(file));
       for (const [name, entry] of Object.entries(zip.files))
-        if (!entry.dir && name.toLowerCase().endsWith(".xlsx"))
+        if (!entry.dir && /\.(xlsx|xlsm)$/i.test(name))
           expanded.push({ name, data: await entry.async("arraybuffer") });
-    } else if (file.name.toLowerCase().endsWith(".xlsx"))
+    } else if (/\.(xlsx|xlsm)$/i.test(file.name))
       expanded.push({ name: file.name, data: await readFile(file) });
   }
   return expanded;
@@ -334,6 +387,7 @@ export async function processUploads(
     warnings,
     fatalErrors,
     duplicateFiles,
+    sourceFiles: expanded,
   };
 }
 
@@ -344,14 +398,29 @@ export function reconcile(entries: TimeEntry[]) {
       .reduce((total, entry) => total + entry.hours, 0);
   const project = sum("project"),
     internal = sum("internal"),
+    timeInLieu = sum("time-in-lieu"),
+    unknown = sum("unknown"),
+    excluded = sum("excluded"),
     exception = sum("exception"),
     total = sum();
   return {
     project,
     internal,
+    unknown,
+    excluded,
     exception,
     total,
-    reconciles: Math.abs(total - project - internal - exception) < 1e-9,
+    reconciles:
+      Math.abs(
+        total -
+          project -
+          internal -
+          timeInLieu -
+          unknown -
+          excluded -
+          exception,
+      ) < 1e-9,
+    timeInLieu,
   };
 }
 
@@ -393,5 +462,19 @@ export function toPublicDataset(
             ? 1
             : a.description.localeCompare(b.description),
     ),
+    statuses: entries
+      .filter(
+        (entry) =>
+          entry.classification === "unknown" ||
+          entry.classification === "excluded",
+      )
+      .map((entry) => ({
+        employee: entry.employee,
+        kind:
+          entry.classification === "unknown"
+            ? ("unknown-project" as const)
+            : ("excluded" as const),
+        hours: entry.hours,
+      })),
   };
 }

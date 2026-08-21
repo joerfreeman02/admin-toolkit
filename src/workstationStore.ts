@@ -1,32 +1,39 @@
-import type { EncryptedEmployeePublication } from "./domain";
+import type {
+  EncryptedEmployeePublication,
+  StoredJobRegister,
+  StoredFinancialYearWorkbook,
+} from "./domain";
 
 const DATABASE_NAME = "eas-admin-toolkit-workstation-v1";
-const DATABASE_VERSION = 1;
-const TEMPLATE_STORE = "annual-template";
+const DATABASE_VERSION = 4;
+const LEGACY_TEMPLATE_STORE = "annual-template";
 const PUBLICATION_STORE = "employee-publications";
-const TEMPLATE_KEY = "approved";
-
-export interface StoredAnnualTemplate {
-  name: string;
-  type: string;
-  data: ArrayBuffer;
-  savedAt: string;
-}
+const FINANCIAL_YEAR_STORE = "financial-year-workbooks";
+const JOB_REGISTER_STORE = "job-register";
 
 function openDatabase() {
   return new Promise<IDBDatabase>((resolve, reject) => {
     const request = indexedDB.open(DATABASE_NAME, DATABASE_VERSION);
     request.onupgradeneeded = () => {
       const database = request.result;
-      if (!database.objectStoreNames.contains(TEMPLATE_STORE))
-        database.createObjectStore(TEMPLATE_STORE);
+      if (database.objectStoreNames.contains(LEGACY_TEMPLATE_STORE))
+        database.deleteObjectStore(LEGACY_TEMPLATE_STORE);
       if (!database.objectStoreNames.contains(PUBLICATION_STORE))
         database.createObjectStore(PUBLICATION_STORE);
+      if (!database.objectStoreNames.contains(FINANCIAL_YEAR_STORE))
+        database.createObjectStore(FINANCIAL_YEAR_STORE);
+      if (!database.objectStoreNames.contains(JOB_REGISTER_STORE))
+        database.createObjectStore(JOB_REGISTER_STORE);
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () =>
       reject(request.error ?? new Error("Local storage unavailable."));
   });
+}
+
+export async function migrateWorkstationStore() {
+  const database = await openDatabase();
+  database.close();
 }
 
 async function requestValue<T>(
@@ -49,33 +56,6 @@ async function requestValue<T>(
   });
 }
 
-export function loadAnnualTemplate() {
-  return requestValue<StoredAnnualTemplate | undefined>(
-    TEMPLATE_STORE,
-    "readonly",
-    (store) => store.get(TEMPLATE_KEY),
-  );
-}
-
-export async function saveAnnualTemplate(file: File) {
-  const value: StoredAnnualTemplate = {
-    name: file.name,
-    type: file.type,
-    data: await file.arrayBuffer(),
-    savedAt: new Date().toISOString(),
-  };
-  await requestValue<IDBValidKey>(TEMPLATE_STORE, "readwrite", (store) =>
-    store.put(value, TEMPLATE_KEY),
-  );
-  return value;
-}
-
-export function removeAnnualTemplate() {
-  return requestValue<undefined>(TEMPLATE_STORE, "readwrite", (store) =>
-    store.delete(TEMPLATE_KEY),
-  );
-}
-
 export function saveEncryptedPublication(
   publication: EncryptedEmployeePublication,
 ) {
@@ -90,4 +70,70 @@ export function listEncryptedPublications() {
     "readonly",
     (store) => store.getAll(),
   );
+}
+
+export function listFinancialYearWorkbooks() {
+  return requestValue<StoredFinancialYearWorkbook[]>(
+    FINANCIAL_YEAR_STORE,
+    "readonly",
+    (store) => store.getAll(),
+  );
+}
+
+export function loadJobRegister() {
+  return requestValue<StoredJobRegister | undefined>(
+    JOB_REGISTER_STORE,
+    "readonly",
+    (store) => store.get("latest"),
+  );
+}
+
+export function saveJobRegister(jobRegister: StoredJobRegister) {
+  return requestValue<IDBValidKey>(JOB_REGISTER_STORE, "readwrite", (store) =>
+    store.put(jobRegister, "latest"),
+  );
+}
+
+export async function saveFinancialYearWorkbook(
+  workbook: StoredFinancialYearWorkbook,
+) {
+  const database = await openDatabase();
+  return new Promise<void>((resolve, reject) => {
+    const transaction = database.transaction(FINANCIAL_YEAR_STORE, "readwrite");
+    const store = transaction.objectStore(FINANCIAL_YEAR_STORE);
+    const getAll = store.getAll();
+    getAll.onsuccess = () => {
+      if (workbook.role === "current") {
+        for (const item of getAll.result as StoredFinancialYearWorkbook[])
+          if (
+            item.role === "current" &&
+            item.financialYear !== workbook.financialYear
+          )
+            store.put(
+              {
+                ...item,
+                role: "historical",
+                inspection: {
+                  ...item.inspection,
+                  source: { ...item.inspection.source, role: "historical" },
+                },
+              },
+              item.financialYear,
+            );
+      }
+      store.put(workbook, workbook.financialYear);
+    };
+    getAll.onerror = () =>
+      reject(getAll.error ?? new Error("Saved workbook list is unavailable."));
+    transaction.oncomplete = () => {
+      database.close();
+      resolve();
+    };
+    transaction.onerror = () => {
+      database.close();
+      reject(
+        transaction.error ?? new Error("The workbook could not be saved."),
+      );
+    };
+  });
 }

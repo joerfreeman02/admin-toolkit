@@ -4,6 +4,9 @@ export const ClassificationSchema = z.enum([
   "project",
   "internal",
   "exception",
+  "unknown",
+  "excluded",
+  "time-in-lieu",
 ]);
 export type Classification = z.infer<typeof ClassificationSchema>;
 
@@ -11,6 +14,27 @@ export interface SourceTrace {
   file: string;
   worksheet: string;
   row: number;
+}
+
+export interface SourceEntryContext {
+  employee: string;
+  month: string;
+  recordedHours: number;
+  originalProjectNumber?: string;
+  originalDescription: string;
+  dailyHours: { day: string; hours: number }[];
+  adjacentValues: string[];
+  surroundingRows: {
+    row: number;
+    projectNumber?: string;
+    description?: string;
+    hours?: number;
+  }[];
+}
+
+export interface SourceWorkbookFile {
+  name: string;
+  data: ArrayBuffer;
 }
 
 export interface SourceHoursAudit {
@@ -33,6 +57,7 @@ export interface TimeEntry {
   approvedUncoded?: boolean;
   uncodedDecision?: UncodedReviewDecision;
   trace: SourceTrace;
+  sourceContext?: SourceEntryContext;
 }
 
 export type UncodedReviewDecision =
@@ -44,12 +69,39 @@ export type UncodedReviewDecision =
   | {
       kind: "genuine-uncoded";
       projectDescription: string;
-    };
+    }
+  | {
+      kind: "internal";
+      internalCode?: string;
+      internalCategory: string;
+    }
+  | { kind: "time-in-lieu" }
+  | { kind: "unknown-project" }
+  | { kind: "excluded"; reason?: string };
+
+export interface InternalCatalogueItem {
+  code?: string;
+  description: string;
+  source: "current-timesheets" | "annual-workbook";
+}
 
 export interface ProjectCatalogueItem {
   code: string;
   description: string;
-  sources: ("current-timesheets" | "annual-workbook")[];
+  client?: string;
+  projectManager?: string;
+  projectDirector?: string;
+  sources: ("current-timesheets" | "annual-workbook" | "job-register")[];
+}
+
+export interface StoredJobRegister {
+  version: 1;
+  fileName: string;
+  loadedAt: string;
+  byteSize: number;
+  fingerprint: string;
+  projects: ProjectCatalogueItem[];
+  warnings: string[];
 }
 
 export interface ProcessingResult {
@@ -61,6 +113,7 @@ export interface ProcessingResult {
   warnings: string[];
   fatalErrors: string[];
   duplicateFiles: string[];
+  sourceFiles: SourceWorkbookFile[];
 }
 
 export const DepartmentSchema = z.enum([
@@ -169,6 +222,12 @@ export interface ConsolidationResult {
   descriptionConflicts: DescriptionConflict[];
   projectHours: number;
   internalHours: number;
+  unknownHours: number;
+  excludedHours: number;
+  timeInLieuHours: number;
+  unknownHoursByEmployee: Record<string, number>;
+  excludedHoursByEmployee: Record<string, number>;
+  timeInLieuHoursByEmployee: Record<string, number>;
   exceptionHours: number;
   importedHours: number;
   reconciles: boolean;
@@ -177,6 +236,107 @@ export interface ConsolidationResult {
   blockers: string[];
 }
 
+export interface MonthlyWorksheet {
+  name: string;
+  month: string;
+  financialYear: string;
+  headerRow: number;
+  employeeColumns: number;
+}
+
+export type FinancialYearWorkbookRole = "current" | "historical";
+
+export interface WorkbookSource {
+  id: string;
+  name: string;
+  financialYear: string;
+  savedAt: string;
+  role: FinancialYearWorkbookRole;
+}
+
+export interface WorkbookCarryCandidate {
+  projectCode?: string;
+  projectDescription?: string;
+  employeeAbbreviation: string;
+  hours: number;
+  originatingMonth: string;
+  originatingYear: number;
+  sourceWorkbook: string;
+  sourceWorkbookId: string;
+  sourceWorksheet: string;
+  sourceRow: number;
+  sourceColumn: number;
+  sourceCell: string;
+  status: "carry";
+  fill: "#92D050";
+}
+
+export interface HistoricalCarryRecord extends WorkbookCarryCandidate {
+  projectCode?: string;
+  employeeId: string;
+  employee: string;
+  department?: Department;
+}
+
+export interface LatestMonthlyWorkbookInspection {
+  financialYear: string;
+  financialYearStart: number;
+  updatedThrough: string;
+  source: WorkbookSource;
+  worksheets: MonthlyWorksheet[];
+  carryCandidates: WorkbookCarryCandidate[];
+  warnings: string[];
+  errors: string[];
+}
+
+export interface StoredFinancialYearWorkbook {
+  financialYear: string;
+  role: FinancialYearWorkbookRole;
+  fileName: string;
+  savedAt: string;
+  updatedThrough: string;
+  data: ArrayBuffer;
+  inspection: LatestMonthlyWorkbookInspection;
+  projectCatalogue: ProjectCatalogueItem[];
+  internalCatalogue?: InternalCatalogueItem[];
+}
+
+export interface HistoricalCarryResolution {
+  records: HistoricalCarryRecord[];
+  warnings: string[];
+  errors: string[];
+  issues: HistoricalReviewIssue[];
+}
+
+export type HistoricalIssueResolution =
+  | {
+      kind: "project";
+      projectCode: string;
+      projectDescription: string;
+    }
+  | { kind: "already-dealt-with" }
+  | { kind: "unknown-project-carry" }
+  | { kind: "exclude" };
+
+export interface HistoricalReviewState {
+  version: 1;
+  employeeMappings: Record<string, string>;
+  issueResolutions: Record<string, HistoricalIssueResolution>;
+}
+
+export interface HistoricalReviewIssue {
+  key: string;
+  kind: "employee" | "project" | "workbook-warning" | "workbook-error";
+  sourceRole: FinancialYearWorkbookRole;
+  title: string;
+  summary: string;
+  technicalEvidence: string;
+  employeeAbbreviation?: string;
+  candidate?: WorkbookCarryCandidate;
+}
+
+// Retained for backwards-compatible validation of legacy Sprint 0 payloads.
+// NEXUS carry-over is derived from Latest Monthly Workbook formatting instead.
 export const CarryoverSchema = z.object({
   employeeInitials: z.string().min(1).max(12),
   hours: z.number().positive(),
@@ -196,6 +356,11 @@ export interface PublicProject {
 export interface PublicDataset {
   month: string;
   projects: PublicProject[];
+  statuses: {
+    employee: string;
+    kind: "unknown-project" | "excluded";
+    hours: number;
+  }[];
 }
 
 export interface EncryptedEmployeePublication {

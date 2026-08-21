@@ -41,6 +41,13 @@ const PublicDatasetSchema = z.object({
       total: z.number().nonnegative(),
     }),
   ),
+  statuses: z.array(
+    z.object({
+      employee: z.string().min(1),
+      kind: z.enum(["unknown-project", "excluded"]),
+      hours: z.number().nonnegative(),
+    }),
+  ),
 });
 
 function bytesToBase64Url(bytes: Uint8Array) {
@@ -108,6 +115,30 @@ export function createEmployeeDataset(
         })),
       total: project.total,
     })),
+    statuses: result.employees.flatMap((employee) => {
+      const unknown = result.unknownHoursByEmployee[employee.id] ?? 0;
+      const excluded = result.excludedHoursByEmployee[employee.id] ?? 0;
+      return [
+        ...(unknown
+          ? [
+              {
+                employee: employee.fullName,
+                kind: "unknown-project" as const,
+                hours: unknown,
+              },
+            ]
+          : []),
+        ...(excluded
+          ? [
+              {
+                employee: employee.fullName,
+                kind: "excluded" as const,
+                hours: excluded,
+              },
+            ]
+          : []),
+      ];
+    }),
   };
 }
 

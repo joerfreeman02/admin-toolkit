@@ -5,7 +5,6 @@ import type {
 } from "./domain";
 import {
   EMPLOYEE_VIEWER_TOKEN_KEY,
-  PBKDF2_ITERATIONS,
   createEmployeeDataset,
   encodePublicationFragment,
   encryptEmployeeDataset,
@@ -60,7 +59,7 @@ export function EmployeePublicationPanel({
     setPublication(undefined);
     setLink("");
     setMessage(
-      "A new Employee Viewer token was generated. Save and distribute it securely.",
+      "A new employee access code is ready. Save it somewhere secure.",
     );
     if (remember) localStorage.setItem(EMPLOYEE_VIEWER_TOKEN_KEY, token);
   }
@@ -96,9 +95,7 @@ export function EmployeePublicationPanel({
       const nextLink = `${location.origin}${location.pathname}${fragment}`;
       setPublication(next);
       setLink(nextLink);
-      setMessage(
-        "Approved project hours were encrypted locally. The link contains ciphertext only.",
-      );
+      setMessage("The Employee Viewer is ready to share for this month.");
     } catch (cause) {
       setMessage(
         cause instanceof Error ? cause.message : "Publication failed.",
@@ -110,13 +107,13 @@ export function EmployeePublicationPanel({
 
   return (
     <article className="employee-publication">
-      <h4>Employee Viewer Access</h4>
+      <h4>Publish Employee Viewer</h4>
       <p>
-        Create a separate shared pilot token, then publish only an explicitly
-        approved project-hours month. The Admin token is never used here.
+        Create the employee access code, confirm this month&apos;s project hours
+        are ready, then publish the viewer.
       </p>
       <button type="button" onClick={generateToken}>
-        Generate secure employee token
+        Create employee access code
       </button>
       <label className="inline-check">
         <input
@@ -124,27 +121,25 @@ export function EmployeePublicationPanel({
           checked={remember}
           onChange={(event) => changeRemember(event.target.checked)}
         />
-        Remember on this workstation
+        Remember on this computer
       </label>
       {generatedToken && (
         <div className="one-time-token">
           <strong>
-            Save this token now — it is shown only in this session
+            Save this access code now — it is shown only in this session
           </strong>
           <code>{generatedToken}</code>
           <button
             type="button"
-            onClick={() =>
-              copy(generatedToken, "Employee Viewer token copied.")
-            }
+            onClick={() => copy(generatedToken, "Employee access code copied.")}
           >
-            Copy token
+            Copy access code
           </button>
         </div>
       )}
       {configuredToken && !generatedToken && (
         <p className="success">
-          Employee Viewer token is configured on this workstation.
+          An employee access code is ready on this computer.
         </p>
       )}
       <label className="approval-confirmation">
@@ -153,8 +148,7 @@ export function EmployeePublicationPanel({
           checked={confirmed}
           onChange={(event) => setConfirmed(event.target.checked)}
         />
-        I confirm this month&apos;s project hours are approved for employee
-        viewing.
+        I confirm this month is ready to publish.
       </label>
       <button
         className="primary"
@@ -164,13 +158,11 @@ export function EmployeePublicationPanel({
         }
         onClick={publish}
       >
-        {busy
-          ? "Encrypting locally..."
-          : "Publish approved month for employees"}
+        {busy ? "Encrypting locally..." : "Publish Employee Viewer"}
       </button>
       {(!result.canExport || blocked) && (
         <small>
-          Publication remains blocked until every export control passes.
+          Finish the remaining review items before publishing this month.
         </small>
       )}
       {link && publication && (
@@ -200,21 +192,6 @@ export function EmployeePublicationPanel({
           {message}
         </p>
       )}
-      <details>
-        <summary>Interim pilot security details</summary>
-        <p>
-          Payloads use PBKDF2-HMAC-SHA-256 (
-          {PBKDF2_ITERATIONS.toLocaleString("en-GB")} iterations), a random
-          128-bit salt, AES-256-GCM and a random 96-bit IV. The URL fragment is
-          not sent to GitHub Pages.
-        </p>
-        <p>
-          This shared-token pilot has no individual identity, revocation or
-          access audit. Anyone holding both the token and encrypted publication
-          can open it. Proper company authentication and hosting must replace
-          this interim mechanism.
-        </p>
-      </details>
     </article>
   );
 }

@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import type {
   Department,
+  DescriptionConflict,
   EmployeeRegister,
   Grade,
+  HistoricalReviewState,
   ProcessingResult,
-  ProjectCatalogueItem,
+  StoredFinancialYearWorkbook,
+  StoredJobRegister,
+  TimeEntry,
   UncodedReviewDecision,
 } from "./domain";
 import {
@@ -13,7 +17,9 @@ import {
   entryReviewKey,
   missingRegisteredEmployees,
 } from "./consolidation";
-import { AnnualTemplatePanel } from "./AnnualTemplatePanel";
+import { LatestMonthlyWorkbookPanel } from "./LatestMonthlyWorkbookPanel";
+import { JobRegisterPanel } from "./JobRegisterPanel";
+import { HistoricalReviewPanel } from "./HistoricalReviewPanel";
 import { EmployeePublicationPanel } from "./EmployeePublicationPanel";
 import { EmployeeRegisterPanel } from "./EmployeeRegisterPanel";
 import {
@@ -25,17 +31,36 @@ import {
 } from "./employeeRegister";
 import { processUploads } from "./processing";
 import {
+  inspectLatestMonthlyWorkbook,
+  resolveHistoricalCarry,
+} from "./monthlyWorkbook";
+import {
+  financialYearForMonth,
+  isAprilProcessingMonth,
+  planFinancialYearRollover,
+  workbookRoleForUpload,
+  monthLabel,
+} from "./financialYear";
+import {
+  loadHistoricalReviewState,
+  saveHistoricalReviewState,
+} from "./historicalReview";
+import {
+  listFinancialYearWorkbooks,
+  loadJobRegister,
+  saveJobRegister,
+  saveFinancialYearWorkbook,
+} from "./workstationStore";
+import {
   catalogueFromAnnualWorkbook,
   catalogueFromCurrentEntries,
+  internalCatalogueFromAnnualWorkbook,
+  internalCatalogueFromEntries,
   mergeProjectCatalogues,
+  mergeInternalCatalogues,
 } from "./projectCatalogue";
+import { parseJobRegister } from "./jobRegister";
 import { UncodedReviewCard } from "./UncodedReviewCard";
-import {
-  loadAnnualTemplate,
-  removeAnnualTemplate,
-  saveAnnualTemplate,
-  type StoredAnnualTemplate,
-} from "./workstationStore";
 import {
   downloadWorkbook,
   generateInternalWorkbook,
@@ -50,16 +75,41 @@ interface Props {
   onRegisterChange: (register: EmployeeRegister) => void;
 }
 
+type CurrentReviewItem =
+  | { kind: "employee"; key: string; sourceName: string }
+  | { kind: "uncoded"; key: string; entry: TimeEntry }
+  | { kind: "description"; key: string; conflict: DescriptionConflict };
+
+function operatorWarning(warning: string, entries: TimeEntry[]) {
+  if (warning.includes("column-D total differs from daily hours")) {
+    const row = warning.match(/row (\d+)/i)?.[1];
+    const file = warning.split(" row ")[0];
+    const entry = entries.find(
+      (item) => item.trace.file === file && String(item.trace.row) === row,
+    );
+    return entry
+      ? `${entry.employee}'s timesheet contains a total that does not match the daily entries. NEXUS has kept the recorded total. Open the original entry if you need to check it.`
+      : "A timesheet contains a total that does not match the daily entries. NEXUS has kept the recorded total. Open the original entry if you need to check it.";
+  }
+  if (warning.includes("invalid hours"))
+    return "A timesheet contains an hours value NEXUS could not read. Open the original entry and check the recorded hours.";
+  if (warning.includes("requested month not found"))
+    return "A supplied timesheet does not contain the selected month. Check that the correct file was added.";
+  return "NEXUS found something in a supplied timesheet that may need checking. Open the details if you need the original file and row.";
+}
+
 function UnknownEmployeeResolver({
   sourceName,
   register,
   month,
   onChange,
+  onResolved,
 }: {
   sourceName: string;
   register: EmployeeRegister;
   month: string;
   onChange: (register: EmployeeRegister) => void;
+  onResolved: () => void;
 }) {
   const [matchId, setMatchId] = useState("");
   const [department, setDepartment] = useState<Department>("Drainage");
@@ -88,9 +138,12 @@ function UnknownEmployeeResolver({
         <button
           type="button"
           disabled={!matchId}
-          onClick={() => onChange(addAlias(register, matchId, sourceName))}
+          onClick={() => {
+            onChange(addAlias(register, matchId, sourceName));
+            onResolved();
+          }}
         >
-          Confirm match
+          Save &amp; next
         </button>
       </div>
       <details>
@@ -131,7 +184,7 @@ function UnknownEmployeeResolver({
             className="primary"
             type="button"
             disabled={!abbreviation.trim()}
-            onClick={() =>
+            onClick={() => {
               onChange(
                 addEmployee(register, {
                   fullName: sourceName,
@@ -141,12 +194,75 @@ function UnknownEmployeeResolver({
                   grade,
                   abbreviation,
                 }),
-              )
-            }
+              );
+              onResolved();
+            }}
           >
-            Create employee
+            Save &amp; continue
           </button>
         </div>
+      </details>
+    </article>
+  );
+}
+
+function DescriptionConflictReview({
+  conflict,
+  onSave,
+  onSkip,
+}: {
+  conflict: DescriptionConflict;
+  onSave: (description: string) => void;
+  onSkip: () => void;
+}) {
+  const [description, setDescription] = useState("");
+  return (
+    <article className="guided-review-card">
+      <h4>Choose the project name to use</h4>
+      <p>
+        Project {conflict.projectCode} appears with more than one name this
+        month.
+      </p>
+      <label>
+        Project name
+        <select
+          aria-label={`Canonical description for project ${conflict.projectCode}`}
+          value={description}
+          onChange={(event) => setDescription(event.target.value)}
+        >
+          <option value="">Choose the correct name</option>
+          {conflict.descriptions.map((item) => (
+            <option key={item}>{item}</option>
+          ))}
+        </select>
+      </label>
+      <div className="button-row">
+        <button
+          className="primary"
+          type="button"
+          disabled={!description}
+          onClick={() => onSave(description)}
+        >
+          Save &amp; next
+        </button>
+        <button type="button" onClick={onSkip}>
+          Skip for now
+        </button>
+      </div>
+      <details>
+        <summary>Open original entries</summary>
+        {conflict.sources.map((source) => (
+          <div className="conflict-source" key={source.description}>
+            <strong>{source.description}</strong>
+            <ul>
+              {source.traces.map((trace) => (
+                <li key={`${trace.file}|${trace.worksheet}|${trace.row}`}>
+                  {trace.file} · {trace.worksheet}, row {trace.row}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
       </details>
     </article>
   );
@@ -155,12 +271,14 @@ function UnknownEmployeeResolver({
 export function AdminProcessing({ logout, register, onRegisterChange }: Props) {
   const [month, setMonth] = useState("2026-07");
   const [files, setFiles] = useState<File[]>([]);
-  const [template, setTemplate] = useState<StoredAnnualTemplate>();
-  const [templateLoading, setTemplateLoading] = useState(true);
-  const [templateMessage, setTemplateMessage] = useState("");
-  const [annualCatalogue, setAnnualCatalogue] = useState<
-    ProjectCatalogueItem[]
-  >([]);
+  const [workbooks, setWorkbooks] = useState<StoredFinancialYearWorkbook[]>([]);
+  const [workbooksLoaded, setWorkbooksLoaded] = useState(false);
+  const [workbookLoading, setWorkbookLoading] = useState(false);
+  const [workbookMessage, setWorkbookMessage] = useState("");
+  const [jobRegister, setJobRegister] = useState<StoredJobRegister>();
+  const [jobRegisterLoaded, setJobRegisterLoaded] = useState(false);
+  const [jobRegisterLoading, setJobRegisterLoading] = useState(false);
+  const [jobRegisterMessage, setJobRegisterMessage] = useState("");
   const [result, setResult] = useState<ProcessingResult>();
   const [uncodedDecisions, setUncodedDecisions] = useState<
     Record<string, UncodedReviewDecision>
@@ -168,9 +286,88 @@ export function AdminProcessing({ logout, register, onRegisterChange }: Props) {
   const [descriptionResolutions, setDescriptionResolutions] = useState<
     Record<string, string>
   >({});
+  const [historicalReview, setHistoricalReview] =
+    useState<HistoricalReviewState>(loadHistoricalReviewState);
+  const [deferredReviewKeys, setDeferredReviewKeys] = useState<string[]>([]);
+  const [reviewSession, setReviewSession] = useState({
+    total: 0,
+    visitedKeys: [] as string[],
+  });
   const [busy, setBusy] = useState(false);
   const [exporting, setExporting] = useState<"project" | "internal">();
   const [message, setMessage] = useState("");
+  const rollover = useMemo(
+    () => planFinancialYearRollover(month, workbooks),
+    [month, workbooks],
+  );
+  const currentWorkbook = rollover.current;
+  const historicalWorkbooks = useMemo(
+    () =>
+      workbooks
+        .filter(
+          (item) => item.financialYear !== rollover.processingFinancialYear,
+        )
+        .sort((a, b) => b.financialYear.localeCompare(a.financialYear)),
+    [workbooks, rollover.processingFinancialYear],
+  );
+  const exportSource =
+    currentWorkbook ??
+    (rollover.needsInitialisation ? rollover.previous : undefined);
+  const annualCatalogue = useMemo(
+    () =>
+      currentWorkbook?.projectCatalogue ?? exportSource?.projectCatalogue ?? [],
+    [currentWorkbook, exportSource],
+  );
+  const annualInternalCatalogue = useMemo(
+    () =>
+      currentWorkbook?.internalCatalogue ??
+      exportSource?.internalCatalogue ??
+      [],
+    [currentWorkbook, exportSource],
+  );
+
+  useEffect(() => {
+    let active = true;
+    listFinancialYearWorkbooks()
+      .then((stored) => {
+        if (active) setWorkbooks(stored);
+      })
+      .catch(() => {
+        if (active)
+          setWorkbookMessage(
+            "Saved workbooks could not be opened. Refresh and try again.",
+          );
+      })
+      .finally(() => {
+        if (active) setWorkbooksLoaded(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+  useEffect(() => {
+    let active = true;
+    loadJobRegister()
+      .then((stored) => {
+        if (active) setJobRegister(stored);
+      })
+      .catch(() => {
+        if (active)
+          setJobRegisterMessage(
+            "The saved Job Register could not be opened. Choose the latest copy again.",
+          );
+      })
+      .finally(() => {
+        if (active) setJobRegisterLoaded(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+  useEffect(
+    () => saveHistoricalReviewState(historicalReview),
+    [historicalReview],
+  );
   const reviewedEntries = useMemo(
     () =>
       result
@@ -192,8 +389,17 @@ export function AdminProcessing({ logout, register, onRegisterChange }: Props) {
       mergeProjectCatalogues(
         catalogueFromCurrentEntries(result?.entries ?? []),
         annualCatalogue,
+        jobRegister?.projects ?? [],
       ),
-    [result, annualCatalogue],
+    [result, annualCatalogue, jobRegister],
+  );
+  const internalCatalogue = useMemo(
+    () =>
+      mergeInternalCatalogues(
+        internalCatalogueFromEntries(result?.entries ?? []),
+        annualInternalCatalogue,
+      ),
+    [result, annualInternalCatalogue],
   );
   const consolidated = useMemo(
     () =>
@@ -212,27 +418,74 @@ export function AdminProcessing({ logout, register, onRegisterChange }: Props) {
         : [],
     [result, register, month],
   );
+  const carryResolution = useMemo(
+    () =>
+      resolveHistoricalCarry(
+        workbooks.map((item) => item.inspection),
+        register,
+        month,
+        historicalReview,
+      ),
+    [workbooks, register, month, historicalReview],
+  );
+  const currentReviewItems = useMemo<CurrentReviewItem[]>(
+    () => [
+      ...consolidated.unknownEmployees.map((sourceName) => ({
+        kind: "employee" as const,
+        key: `employee|${sourceName}`,
+        sourceName,
+      })),
+      ...exceptionEntries
+        .filter((entry) => !uncodedDecisions[entryReviewKey(entry)])
+        .map((entry) => ({
+          kind: "uncoded" as const,
+          key: `uncoded|${entryReviewKey(entry)}`,
+          entry,
+        })),
+      ...consolidated.descriptionConflicts
+        .filter((conflict) => !conflict.resolved)
+        .map((conflict) => ({
+          kind: "description" as const,
+          key: `description|${conflict.projectCode}`,
+          conflict,
+        })),
+    ],
+    [
+      consolidated.unknownEmployees,
+      consolidated.descriptionConflicts,
+      exceptionEntries,
+      uncodedDecisions,
+    ],
+  );
+  const reviewItem =
+    currentReviewItems.find((item) => !deferredReviewKeys.includes(item.key)) ??
+    currentReviewItems[0];
+  const reviewTotal = reviewSession.total || currentReviewItems.length;
+  const reviewPosition = reviewItem
+    ? Math.min(reviewSession.visitedKeys.length + 1, reviewTotal)
+    : 0;
+  const revisitingSkippedItem =
+    !!reviewItem && reviewSession.visitedKeys.includes(reviewItem.key);
 
   useEffect(() => {
-    loadAnnualTemplate()
-      .then((stored) => {
-        setTemplate(stored);
-        if (stored)
-          setAnnualCatalogue(catalogueFromAnnualWorkbook(stored.data));
-      })
-      .catch(() =>
-        setTemplateMessage(
-          "The approved annual workbook could not be loaded from this browser.",
-        ),
-      )
-      .finally(() => setTemplateLoading(false));
-  }, []);
+    if (!result) {
+      setReviewSession({ total: 0, visitedKeys: [] });
+      return;
+    }
+    setReviewSession((current) =>
+      current.total
+        ? current
+        : { total: currentReviewItems.length, visitedKeys: [] },
+    );
+  }, [result, currentReviewItems]);
 
   async function run() {
     setBusy(true);
     setMessage("");
     setUncodedDecisions({});
     setDescriptionResolutions({});
+    setDeferredReviewKeys([]);
+    setReviewSession({ total: 0, visitedKeys: [] });
     try {
       setResult(await processUploads(files, month));
     } finally {
@@ -240,10 +493,30 @@ export function AdminProcessing({ logout, register, onRegisterChange }: Props) {
     }
   }
 
+  function skipCurrentReview() {
+    if (!reviewItem) return;
+    markReviewProgress(reviewItem.key);
+    if (currentReviewItems.length > 1)
+      setDeferredReviewKeys((current) =>
+        current.includes(reviewItem.key)
+          ? current
+          : [...current, reviewItem.key],
+      );
+  }
+
+  function markReviewProgress(key: string) {
+    setReviewSession((current) =>
+      current.visitedKeys.includes(key)
+        ? current
+        : { ...current, visitedKeys: [...current.visitedKeys, key] },
+    );
+  }
+
   function recordUncodedDecision(
     key: string,
     decision?: UncodedReviewDecision,
   ) {
+    if (decision) markReviewProgress(key);
     setUncodedDecisions((current) => {
       const next = { ...current };
       if (decision) next[key] = decision;
@@ -252,49 +525,164 @@ export function AdminProcessing({ logout, register, onRegisterChange }: Props) {
     });
   }
 
-  async function chooseTemplate(file?: File) {
+  async function chooseJobRegister(file?: File) {
     if (!file) return;
-    setTemplateMessage("");
+    setJobRegisterLoading(true);
+    setJobRegisterMessage("");
     try {
-      const stored = await saveAnnualTemplate(file);
-      const catalogue = catalogueFromAnnualWorkbook(stored.data);
-      setTemplate(stored);
-      setAnnualCatalogue(catalogue);
-      setTemplateMessage(
-        `Annual workbook saved on this workstation with ${catalogue.length} known project record(s).`,
+      const parsed = await parseJobRegister(
+        await file.arrayBuffer(),
+        file.name,
+      );
+      await saveJobRegister(parsed);
+      setJobRegister(parsed);
+      setJobRegisterMessage(
+        `Latest Job Register saved — ${parsed.projects.length.toLocaleString("en-GB")} projects ready for search.`,
       );
     } catch (cause) {
-      setTemplateMessage(
+      setJobRegisterMessage(
         cause instanceof Error
           ? cause.message
-          : "The annual workbook could not be stored.",
+          : "The Job Register could not be checked.",
       );
+    } finally {
+      setJobRegisterLoading(false);
     }
   }
 
-  async function clearTemplate() {
+  async function chooseWorkbook(file: File | undefined, historical: boolean) {
+    if (!file) return;
+    setWorkbookLoading(true);
+    setWorkbookMessage("");
     try {
-      await removeAnnualTemplate();
-      setTemplate(undefined);
-      setAnnualCatalogue([]);
-      setTemplateMessage("The locally stored annual workbook was removed.");
-    } catch {
-      setTemplateMessage(
-        "The locally stored annual workbook could not be removed.",
+      const data = await file.arrayBuffer();
+      const savedAt = new Date().toISOString();
+      const firstInspection = await inspectLatestMonthlyWorkbook(data, {
+        name: file.name,
+        savedAt,
+      });
+      const role = historical
+        ? "historical"
+        : workbookRoleForUpload(firstInspection, month);
+      const expectedYear = financialYearForMonth(month).label;
+      if (!historical && role !== "current")
+        throw new Error(
+          `This workbook is for ${firstInspection.financialYear}. Choose the ${expectedYear} workbook for the selected month, or add it under Previous years.`,
+        );
+      if (historical && firstInspection.financialYear >= expectedYear)
+        throw new Error(
+          `This workbook is for ${firstInspection.financialYear}. Choose an earlier financial year here.`,
+        );
+      const inspection = await inspectLatestMonthlyWorkbook(data, {
+        id: `financial-year:${firstInspection.financialYear}:${savedAt}`,
+        name: file.name,
+        savedAt,
+        role,
+      });
+      const catalogue = catalogueFromAnnualWorkbook(data);
+      const internalCatalogue = internalCatalogueFromAnnualWorkbook(data);
+      const stored: StoredFinancialYearWorkbook = {
+        financialYear: inspection.financialYear,
+        role,
+        fileName: file.name,
+        savedAt,
+        updatedThrough: inspection.updatedThrough,
+        data,
+        inspection,
+        projectCatalogue: catalogue,
+        internalCatalogue,
+      };
+      await saveFinancialYearWorkbook(stored);
+      setWorkbooks((current) => [
+        ...current
+          .filter((item) => item.financialYear !== stored.financialYear)
+          .map((item) =>
+            role === "current" && item.role === "current"
+              ? {
+                  ...item,
+                  role: "historical" as const,
+                  inspection: {
+                    ...item.inspection,
+                    source: {
+                      ...item.inspection.source,
+                      role: "historical" as const,
+                    },
+                  },
+                }
+              : item,
+          ),
+        stored,
+      ]);
+      setResult(undefined);
+      setWorkbookMessage(
+        `${inspection.financialYear} saved on this workstation, updated through ${monthLabel(inspection.updatedThrough)}.`,
       );
+    } catch (cause) {
+      setWorkbookMessage(
+        cause instanceof Error
+          ? cause.message
+          : "The hours workbook could not be checked.",
+      );
+    } finally {
+      setWorkbookLoading(false);
     }
   }
+
+  const chooseLatestWorkbook = (file?: File) => chooseWorkbook(file, false);
+  const chooseHistoricalWorkbook = (file?: File) => chooseWorkbook(file, true);
 
   async function exportProject() {
-    if (!template) return;
+    if (
+      !exportSource ||
+      carryResolution.errors.length ||
+      carryResolution.warnings.length
+    )
+      return;
     setExporting("project");
     setMessage("");
     try {
       const data = await generateProjectWorkbook(
         consolidated,
-        template.data,
+        exportSource.data,
         __BUILD_ID__,
+        carryResolution.records,
       );
+      if (rollover.needsInitialisation && isAprilProcessingMonth(month)) {
+        const savedAt = new Date().toISOString();
+        const fileName = projectWorkbookFilename(month);
+        const inspection = await inspectLatestMonthlyWorkbook(data, {
+          id: `financial-year:${rollover.processingFinancialYear}:${savedAt}`,
+          name: fileName,
+          savedAt,
+          role: "current",
+        });
+        const initialised: StoredFinancialYearWorkbook = {
+          financialYear: inspection.financialYear,
+          role: "current",
+          fileName,
+          savedAt,
+          updatedThrough: inspection.updatedThrough,
+          data,
+          inspection,
+          projectCatalogue: catalogueFromAnnualWorkbook(data),
+          internalCatalogue: internalCatalogueFromAnnualWorkbook(data),
+        };
+        await saveFinancialYearWorkbook(initialised);
+        setWorkbooks((current) => [
+          ...current.map((item) => ({
+            ...item,
+            role: "historical" as const,
+            inspection: {
+              ...item.inspection,
+              source: {
+                ...item.inspection.source,
+                role: "historical" as const,
+              },
+            },
+          })),
+          initialised,
+        ]);
+      }
       downloadWorkbook(data, projectWorkbookFilename(month));
       setMessage("Project-hours workbook generated locally.");
     } catch (error) {
@@ -315,6 +703,7 @@ export function AdminProcessing({ logout, register, onRegisterChange }: Props) {
         reviewedEntries,
         register,
         __BUILD_ID__,
+        carryResolution.records,
       );
       downloadWorkbook(data, internalWorkbookFilename(month));
       setMessage("Protected Internal Hours workbook generated locally.");
@@ -327,21 +716,38 @@ export function AdminProcessing({ logout, register, onRegisterChange }: Props) {
     }
   }
 
+  function downloadOriginalTimesheet(entry: TimeEntry) {
+    const source = result?.sourceFiles.find(
+      (item) => item.name === entry.trace.file,
+    );
+    if (!source) return;
+    const url = URL.createObjectURL(
+      new Blob([source.data], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      }),
+    );
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = source.name.split(/[\\/]/).at(-1) ?? "timesheet.xlsx";
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <section className="panel admin-workflow">
       <div className="title-row">
         <div>
           <p className="eyebrow">Protected administrative area</p>
-          <h2>Monthly timesheet consolidation</h2>
+          <h2>Create this month&apos;s hours reports</h2>
           <p className="lead">
-            Process source files locally, review every exception, reconcile all
-            hours, then generate separate project and internal workbooks.
+            Add the month&apos;s files, review anything NEXUS could not
+            identify, then create the reports and employee viewer.
           </p>
         </div>
         <button onClick={logout}>Logout / reset</button>
       </div>
       <div className="notice">
-        Confidential files remain in this browser session. Never upload source
+        Confidential files stay on this workstation. Never upload source
         timesheets, employee records, generated outputs or rates to GitHub.
       </div>
 
@@ -349,12 +755,13 @@ export function AdminProcessing({ logout, register, onRegisterChange }: Props) {
         <div className="section-heading">
           <span className="step-number">1</span>
           <div>
-            <p className="eyebrow">Reporting period</p>
-            <h3 id="month-title">Select reporting month</h3>
+            <p className="eyebrow">Step 1</p>
+            <h3 id="month-title">Add this month&apos;s files</h3>
           </div>
         </div>
         <label className="field-width">
           Reporting month
+          <strong className="current-month-label">{monthLabel(month)}</strong>
           <input
             type="month"
             value={month}
@@ -369,22 +776,26 @@ export function AdminProcessing({ logout, register, onRegisterChange }: Props) {
         onChange={onRegisterChange}
       />
 
-      <AnnualTemplatePanel
-        template={template}
-        loading={templateLoading}
-        message={templateMessage}
-        onChoose={chooseTemplate}
-        onRemove={clearTemplate}
+      <LatestMonthlyWorkbookPanel
+        current={currentWorkbook}
+        historical={historicalWorkbooks}
+        processingFinancialYear={rollover.processingFinancialYear}
+        loading={workbookLoading || !workbooksLoaded}
+        message={workbookMessage}
+        needsInitialisation={rollover.needsInitialisation}
+        onChooseCurrent={chooseLatestWorkbook}
+        onChooseHistorical={chooseHistoricalWorkbook}
+      />
+
+      <JobRegisterPanel
+        value={jobRegister}
+        loading={jobRegisterLoading || !jobRegisterLoaded}
+        message={jobRegisterMessage}
+        onChoose={chooseJobRegister}
       />
 
       <section className="workflow-section" aria-labelledby="timesheets-title">
-        <div className="section-heading">
-          <span className="step-number">4</span>
-          <div>
-            <p className="eyebrow">Local source files</p>
-            <h3 id="timesheets-title">Upload timesheets or ZIP</h3>
-          </div>
-        </div>
+        <h3 id="timesheets-title">Timesheets</h3>
         <div className="controls">
           <label className="file-drop">
             Timesheets or ZIP
@@ -398,10 +809,10 @@ export function AdminProcessing({ logout, register, onRegisterChange }: Props) {
           </label>
           <button
             className="primary"
-            disabled={!files.length || busy}
+            disabled={!files.length || !exportSource || busy}
             onClick={run}
           >
-            {busy ? "Processing locally..." : "Process locally"}
+            {busy ? "Checking files…" : "Check files"}
           </button>
         </div>
         {!!files.length && (
@@ -421,29 +832,101 @@ export function AdminProcessing({ logout, register, onRegisterChange }: Props) {
             ))}
           </ul>
         )}
+        {!exportSource && (
+          <small>Choose the current hours workbook before continuing.</small>
+        )}
       </section>
 
       {result && (
         <>
           <section className="workflow-section" aria-labelledby="review-title">
             <div className="section-heading">
-              <span className="step-number">5-6</span>
+              <span className="step-number">2</span>
               <div>
-                <p className="eyebrow">Controlled review</p>
+                <p className="eyebrow">Step 2</p>
                 <h3 id="review-title">
-                  Review employees, warnings and exceptions
+                  Review anything NEXUS couldn&apos;t identify
                 </h3>
               </div>
             </div>
-            {consolidated.unknownEmployees.map((sourceName) => (
-              <UnknownEmployeeResolver
-                key={sourceName}
-                sourceName={sourceName}
-                register={register}
-                month={month}
-                onChange={onRegisterChange}
-              />
-            ))}
+            <p
+              className={currentReviewItems.length ? "warning-line" : "success"}
+            >
+              {currentReviewItems.length === 0
+                ? "Nothing left to review."
+                : `${currentReviewItems.length} item${currentReviewItems.length === 1 ? " still needs" : "s still need"} a decision`}
+            </p>
+            {reviewItem && (
+              <div className="guided-review-queue">
+                <div className="review-progress">
+                  <span>
+                    Item {reviewPosition} of {reviewTotal} ·{" "}
+                    {currentReviewItems.length} remaining
+                  </span>
+                  <progress
+                    aria-label="Current review progress"
+                    max={reviewTotal}
+                    value={reviewPosition}
+                  />
+                  {revisitingSkippedItem && (
+                    <small>Returning to an item you skipped earlier.</small>
+                  )}
+                </div>
+                {reviewItem.kind === "employee" && (
+                  <div key={reviewItem.key}>
+                    <UnknownEmployeeResolver
+                      sourceName={reviewItem.sourceName}
+                      register={register}
+                      month={month}
+                      onChange={onRegisterChange}
+                      onResolved={() => markReviewProgress(reviewItem.key)}
+                    />
+                    <button type="button" onClick={skipCurrentReview}>
+                      Skip for now
+                    </button>
+                  </div>
+                )}
+                {reviewItem.kind === "uncoded" && (
+                  <UncodedReviewCard
+                    key={reviewItem.key}
+                    entry={reviewItem.entry}
+                    catalogue={projectCatalogue}
+                    internalCatalogue={internalCatalogue}
+                    decision={
+                      uncodedDecisions[entryReviewKey(reviewItem.entry)]
+                    }
+                    onDecision={(decision) =>
+                      recordUncodedDecision(
+                        entryReviewKey(reviewItem.entry),
+                        decision,
+                      )
+                    }
+                    onSkip={skipCurrentReview}
+                    onDownloadOriginal={
+                      result.sourceFiles.some(
+                        (item) => item.name === reviewItem.entry.trace.file,
+                      )
+                        ? () => downloadOriginalTimesheet(reviewItem.entry)
+                        : undefined
+                    }
+                  />
+                )}
+                {reviewItem.kind === "description" && (
+                  <DescriptionConflictReview
+                    key={reviewItem.key}
+                    conflict={reviewItem.conflict}
+                    onSave={(description) => {
+                      markReviewProgress(reviewItem.key);
+                      setDescriptionResolutions((current) => ({
+                        ...current,
+                        [reviewItem.conflict.projectCode]: description,
+                      }));
+                    }}
+                    onSkip={skipCurrentReview}
+                  />
+                )}
+              </div>
+            )}
             {!!missingEmployees.length && (
               <div className="warning">
                 <h4>Missing registered timesheets</h4>
@@ -452,21 +935,32 @@ export function AdminProcessing({ logout, register, onRegisterChange }: Props) {
             )}
             {!!result.blankTimesheets.length && (
               <div className="warning">
-                <h4>Blank timesheets</h4>
+                <h4>No hours recorded</h4>
                 <p>{result.blankTimesheets.join(", ")}</p>
               </div>
             )}
             {!!result.warnings.length && (
-              <details className="warning" open>
-                <summary>
-                  Processing warnings ({result.warnings.length})
-                </summary>
+              <div className="warning-summary">
+                <strong>
+                  {result.warnings.length} timesheet item
+                  {result.warnings.length === 1 ? "" : "s"} may need checking
+                </strong>
                 <ul>
                   {result.warnings.map((warning, index) => (
-                    <li key={`${warning}-${index}`}>{warning}</li>
+                    <li key={`${warning}-${index}`}>
+                      {operatorWarning(warning, result.entries)}
+                    </li>
                   ))}
                 </ul>
-              </details>
+                <details>
+                  <summary>More details ({result.warnings.length})</summary>
+                  <ul>
+                    {result.warnings.map((warning, index) => (
+                      <li key={`${warning}-${index}`}>{warning}</li>
+                    ))}
+                  </ul>
+                </details>
+              </div>
             )}
             {!!result.fatalErrors.length && (
               <div className="error-box">
@@ -478,200 +972,74 @@ export function AdminProcessing({ logout, register, onRegisterChange }: Props) {
                 </ul>
               </div>
             )}
-            {!!exceptionEntries.length && (
-              <div className="exception-list">
-                <h4>Review hours without a recognised project number</h4>
-                <p>
-                  Some employees entered hours without a recognised project
-                  number. Review each item below. The Toolkit can suggest
-                  possible existing projects, but you must confirm the correct
-                  destination.
-                </p>
-                {exceptionEntries.map((entry) => {
-                  const key = entryReviewKey(entry);
-                  return (
-                    <UncodedReviewCard
-                      key={key}
-                      entry={entry}
-                      catalogue={projectCatalogue}
-                      decision={uncodedDecisions[key]}
-                      onDecision={(decision) =>
-                        recordUncodedDecision(key, decision)
-                      }
-                    />
-                  );
-                })}
-              </div>
-            )}
-            {!!consolidated.descriptionConflicts.length && (
-              <div className="description-conflicts">
-                <h4>Resolve conflicting project descriptions</h4>
-                <p>
-                  Select the canonical description for this processing run.
-                  Source records remain unchanged and are retained in the
-                  protected audit workbook.
-                </p>
-                {consolidated.descriptionConflicts.map((conflict) => (
-                  <article
-                    className={`resolution-card conflict-resolution ${
-                      conflict.resolved ? "resolved" : "unresolved"
-                    }`}
-                    key={conflict.projectCode}
-                  >
-                    <div className="conflict-heading">
-                      <strong>Project {conflict.projectCode}</strong>
-                      <span>
-                        {conflict.resolved ? "Resolved" : "Export blocker"}
-                      </span>
-                    </div>
-                    <label>
-                      Canonical description
-                      <select
-                        aria-label={`Canonical description for project ${conflict.projectCode}`}
-                        value={
-                          descriptionResolutions[conflict.projectCode] ?? ""
-                        }
-                        onChange={(event) =>
-                          setDescriptionResolutions((current) => ({
-                            ...current,
-                            [conflict.projectCode]: event.target.value,
-                          }))
-                        }
-                      >
-                        <option value="">Select an observed description</option>
-                        {conflict.descriptions.map((description) => (
-                          <option key={description} value={description}>
-                            {description}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <details>
-                      <summary>Protected source context</summary>
-                      {conflict.sources.map((source) => (
-                        <div
-                          className="conflict-source"
-                          key={source.description}
-                        >
-                          <strong>{source.description}</strong>
-                          <ul>
-                            {source.traces.map((trace) => (
-                              <li
-                                key={`${trace.file}|${trace.worksheet}|${trace.row}`}
-                              >
-                                {trace.file} - {trace.worksheet}, row{" "}
-                                {trace.row}
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      ))}
-                    </details>
-                  </article>
-                ))}
-              </div>
-            )}
           </section>
+
+          {workbooks.length > 0 && (
+            <HistoricalReviewPanel
+              issues={carryResolution.issues}
+              state={historicalReview}
+              register={register}
+              catalogue={projectCatalogue}
+              onChange={setHistoricalReview}
+            />
+          )}
 
           <section
             className="workflow-section"
             aria-labelledby="reconciliation-title"
           >
             <div className="section-heading">
-              <span className="step-number">7</span>
+              <span className="step-number">3</span>
               <div>
-                <p className="eyebrow">Control total</p>
-                <h3 id="reconciliation-title">Confirm reconciliation</h3>
+                <p className="eyebrow">Step 3</p>
+                <h3 id="reconciliation-title">Create monthly reports</h3>
               </div>
             </div>
-            <div className="metrics">
+            <div className="output-grid report-ready-grid">
               <article>
-                <span>Files</span>
-                <strong>{result.filesSupplied}</strong>
-              </article>
-              <article>
-                <span>Employees</span>
-                <strong>{result.employees.length}</strong>
-              </article>
-              <article>
-                <span>Project</span>
-                <strong>{consolidated.projectHours.toFixed(2)}</strong>
-              </article>
-              <article>
-                <span>Internal</span>
-                <strong>{consolidated.internalHours.toFixed(2)}</strong>
-              </article>
-              <article>
-                <span>Exceptions</span>
-                <strong>{consolidated.exceptionHours.toFixed(2)}</strong>
-              </article>
-              <article>
-                <span>Total</span>
-                <strong>{consolidated.importedHours.toFixed(2)}</strong>
-              </article>
-            </div>
-            <p className={consolidated.reconciles ? "success" : "error"}>
-              Reconciliation: {consolidated.reconciles ? "passed" : "failed"} -
-              project + internal + exceptions = imported total
-            </p>
-            {consolidated.sourceDiscrepancyCount > 0 && (
-              <p className="warning-line">
-                {consolidated.sourceDiscrepancyCount} source row(s) have a
-                column-D / daily-cell difference. Column D is retained as the
-                audited source value; both values remain in protected trace
-                data.
-              </p>
-            )}
-            {!!consolidated.blockers.length && (
-              <div className="error-box" role="alert">
-                <h4>Export blockers</h4>
-                <ul>
-                  {consolidated.blockers.map((blocker) => (
-                    <li key={blocker}>{blocker}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </section>
-
-          <section className="workflow-section" aria-labelledby="output-title">
-            <div className="section-heading">
-              <span className="step-number">8-9</span>
-              <div>
-                <p className="eyebrow">Separate protected outputs</p>
-                <h3 id="output-title">Generate Excel workbooks</h3>
-              </div>
-            </div>
-            <div className="output-grid">
-              <article>
-                <h4>Hours for Invoicing</h4>
+                <span className="report-kind">
+                  Monthly project-hours report
+                </span>
+                <strong className="report-status">
+                  {consolidated.canExport &&
+                  !carryResolution.errors.length &&
+                  !carryResolution.warnings.length
+                    ? "Ready"
+                    : "Needs review"}
+                </strong>
                 <p>
-                  Coded projects followed by explicitly approved uncoded
-                  projects. Internal hours never enter this workbook.
+                  {consolidated.projects.length} identified projects ·{" "}
+                  {consolidated.unknownHours.toFixed(2)} unknown hours ·{" "}
+                  {consolidated.excludedHours.toFixed(2)} excluded hours
                 </p>
                 <button
                   className="primary"
                   disabled={
                     !consolidated.canExport ||
                     result.fatalErrors.length > 0 ||
-                    !template ||
+                    !exportSource ||
+                    carryResolution.errors.length > 0 ||
+                    carryResolution.warnings.length > 0 ||
                     !!exporting
                   }
                   onClick={exportProject}
                 >
-                  {exporting === "project"
-                    ? "Generating..."
-                    : "Generate Project Hours workbook"}
+                  {exporting === "project" ? "Preparing…" : "Download report"}
                 </button>
-                {!template && (
-                  <small>Select the current workbook/template first.</small>
+                {!exportSource && (
+                  <small>Choose the current hours workbook first.</small>
                 )}
               </article>
               <article className="internal-output">
-                <h4>Internal Hours</h4>
+                <span className="report-kind">Internal hours report</span>
+                <strong className="report-status">
+                  {consolidated.canExport ? "Ready" : "Needs review"}
+                </strong>
                 <p>
-                  Confidential internal categories, employee totals,
-                  reconciliation and protected source audit.
+                  {consolidated.internal.length} internal categories ·{" "}
+                  {consolidated.timeInLieuHours.toFixed(2)} Time in Lieu hours ·{" "}
+                  other non-project hours shown separately · private management
+                  output
                 </p>
                 <button
                   className="primary"
@@ -683,15 +1051,57 @@ export function AdminProcessing({ logout, register, onRegisterChange }: Props) {
                   onClick={exportInternal}
                 >
                   {exporting === "internal"
-                    ? "Generating..."
-                    : "Generate Internal Hours workbook"}
+                    ? "Preparing…"
+                    : "Download directors' report"}
                 </button>
               </article>
-              <EmployeePublicationPanel
-                result={consolidated}
-                blocked={result.fatalErrors.length > 0}
-              />
             </div>
+            <details className="report-details">
+              <summary>Report checks and totals</summary>
+              <p className={consolidated.reconciles ? "success" : "error"}>
+                Totals check:{" "}
+                {consolidated.reconciles ? "passed" : "needs attention"}
+              </p>
+              <p>
+                Project {consolidated.projectHours.toFixed(2)} · Internal{" "}
+                {consolidated.internalHours.toFixed(2)} · Unknown{" "}
+                {consolidated.unknownHours.toFixed(2)} · Excluded{" "}
+                {consolidated.excludedHours.toFixed(2)} · Still to review{" "}
+                {consolidated.exceptionHours.toFixed(2)} · Source total{" "}
+                {consolidated.importedHours.toFixed(2)}
+              </p>
+            </details>
+            {consolidated.sourceDiscrepancyCount > 0 && (
+              <p className="warning-line">
+                {consolidated.sourceDiscrepancyCount} timesheet total does not
+                match its daily entries. NEXUS has kept the recorded total; open
+                the item&apos;s details if it needs checking.
+              </p>
+            )}
+            {!!consolidated.blockers.length && (
+              <div className="error-box" role="alert">
+                <h4>Reports aren&apos;t ready yet</h4>
+                <p>
+                  Finish the remaining review items before creating this
+                  month&apos;s reports.
+                </p>
+                {currentReviewItems.length > 0 && (
+                  <p>
+                    {currentReviewItems.length} item
+                    {currentReviewItems.length === 1 ? "" : "s"} still need a
+                    decision.
+                  </p>
+                )}
+                <details>
+                  <summary>More details</summary>
+                  <ul>
+                    {consolidated.blockers.map((blocker) => (
+                      <li key={blocker}>{blocker}</li>
+                    ))}
+                  </ul>
+                </details>
+              </div>
+            )}
             {message && (
               <p className="status-message" role="status">
                 {message}
@@ -699,55 +1109,22 @@ export function AdminProcessing({ logout, register, onRegisterChange }: Props) {
             )}
           </section>
 
-          <section className="workflow-section preview-section">
-            <h3>Protected consolidation preview</h3>
-            <div className="split">
+          <section
+            className="workflow-section"
+            aria-labelledby="publication-title"
+          >
+            <div className="section-heading">
+              <span className="step-number">4</span>
               <div>
-                <h4>Project rows ({consolidated.projects.length})</h4>
-                <div className="table-wrap">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Code</th>
-                        <th>Description</th>
-                        <th>Total</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {consolidated.projects.map((project) => (
-                        <tr key={project.key}>
-                          <td>{project.code ?? "Approved uncoded"}</td>
-                          <td>{project.description}</td>
-                          <td>{project.total.toFixed(2)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <p className="eyebrow">Step 4</p>
+                <h3 id="publication-title">Publish employee viewer</h3>
               </div>
-              <div>
-                <h4>Internal rows ({consolidated.internal.length})</h4>
-                <div className="table-wrap">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Code</th>
-                        <th>Description</th>
-                        <th>Total</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {consolidated.internal.map((item) => (
-                        <tr key={item.key}>
-                          <td>{item.code ?? "Configured"}</td>
-                          <td>{item.description}</td>
-                          <td>{item.total.toFixed(2)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+            </div>
+            <div className="output-grid publication-grid">
+              <EmployeePublicationPanel
+                result={consolidated}
+                blocked={result.fatalErrors.length > 0}
+              />
             </div>
           </section>
         </>

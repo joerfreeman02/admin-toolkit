@@ -25,11 +25,12 @@ function DatasetViewer({
 }) {
   const employees = useMemo(
     () => [
-      ...new Set(
-        dataset.projects.flatMap((project) =>
+      ...new Set([
+        ...dataset.projects.flatMap((project) =>
           project.contributors.map((item) => item.employee),
         ),
-      ),
+        ...dataset.statuses.map((status) => status.employee),
+      ]),
     ],
     [dataset],
   );
@@ -42,6 +43,9 @@ function DatasetViewer({
     projects.find(
       (project) => (project.code ?? project.description) === selectedKey,
     ) ?? projects[0];
+  const statuses = dataset.statuses.filter(
+    (status) => status.employee === employee,
+  );
 
   useEffect(() => {
     setEmployee(employees[0] ?? "");
@@ -106,6 +110,32 @@ function DatasetViewer({
               </strong>
             </button>
           ))}
+          {statuses.some((status) => status.kind === "unknown-project") && (
+            <section className="employee-status-summary">
+              <h3>Hours needing clarification</h3>
+              {statuses
+                .filter((status) => status.kind === "unknown-project")
+                .map((status, index) => (
+                  <p key={`unknown-${index}`}>
+                    {dataset.month} — {status.hours.toFixed(2)}h — Unknown
+                    Project
+                  </p>
+                ))}
+            </section>
+          )}
+          {statuses.some((status) => status.kind === "excluded") && (
+            <section className="employee-status-summary">
+              <h3>Excluded hours</h3>
+              {statuses
+                .filter((status) => status.kind === "excluded")
+                .map((status, index) => (
+                  <p key={`excluded-${index}`}>
+                    {dataset.month} — {status.hours.toFixed(2)}h — Excluded from
+                    allocation
+                  </p>
+                ))}
+            </section>
+          )}
         </div>
         <ProjectDetail project={selected} />
       </div>

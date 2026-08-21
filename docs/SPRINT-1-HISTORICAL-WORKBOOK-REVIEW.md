@@ -1,5 +1,7 @@
 # Sprint 1 historical workbook review
 
+> Historical pre-NEXUS review. NEXUS 1.0A supersedes the deferred carry position below with the whole-workbook `#92D050` engine documented in `ARCHITECTURE.md`; the structural observations remain useful evidence.
+
 ## Scope and confidentiality
 
 The supplied historical Hours for Invoicing workbook was copied to a private non-repository QA workspace, imported read-only and rendered sheet by sheet. This record is deliberately anonymised: it contains no employee, project, filename or hour data.
@@ -26,6 +28,10 @@ EAS Hours for Invoicing workbooks intentionally use an April-to-March annual cyc
 The exporter correctly takes the selected sheet's presentation profile, creates employee columns from the effective-dated register, sorts coded projects numerically, places explicitly approved uncoded rows last, and leaves carry/notes blank for manual control. Current employee ordering follows the authorised department, grade and within-band register order, not a frozen historical staff list.
 
 No exporter correction was justified by the historical evidence. The corrective code change is limited to deliberate project-description conflict resolution and protected audit retention.
+
+## NEXUS 1.0A.3 review correction
+
+Historical abbreviations may be resolved in one click as a stable inactive identity such as `Former employee (AW)`; this does not add an active Employee Register record. For closed financial years only, an operator may mark a prompted stale record **Already dealt with — do not carry forward**. The decision is keyed to the complete source fingerprint, so changed hours/project/cell evidence reopens review. Current-FY commercial colour remains authoritative and structural workbook errors cannot be acknowledged away.
 
 ## Out of scope
 
