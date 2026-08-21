@@ -1,13 +1,12 @@
 # NEXUS
 
-Browser-local administrative tooling for controlled timesheet processing. NEXUS 1.0A.3.2 keeps the proven processing and carry engines while adding a persistent Job Register catalogue, rapid one-click resolutions and complete hour accountability.
+NEXUS brings monthly timesheets, carried hours, project information and outstanding Third Party Costs into one controlled workflow for preparing invoicing information.
 
 > Never commit or publish real timesheets, generated outputs, internal hours, credentials, Employee Register records or acceptance fixtures.
 
 ## Status and versions
 
-- Development release candidate: product `NEXUS-1.0.0-rc.2`, module `TIME-1.0.0-rc.2`.
-- This is not an accepted, frozen or production `1.0.0` release.
+- Production release: product `NEXUS 1.0.0`, module `TIME 1.0.0`.
 - Starting pre-sprint candidate: `ADMIN-0.2.0 / TIME-0.2.0` at `def244ccbfcc1e688296f29f2469eba5a453c2c7`.
 - Last accepted recovery baseline: tag `sprint-0-admin-0.1.1-time-0.1.1` at `5b99054ea78bdfc77369c7215bb0cf7530a6c8f4` (merged main baseline `d575ab58957aedf15b68f780ebe5bdddb84f0175`).
 - Build identity comes from `GITHUB_SHA`, falling back to `local-dev`.
@@ -19,7 +18,7 @@ Browser-local administrative tooling for controlled timesheet processing. NEXUS 
 3. **Create monthly reports** for project and protected internal hours.
 4. **Publish employee viewer** only after deliberate approval.
 
-The Current FY workbook is replaced after each valid upload and retained on the workstation. Earlier April-to-March workbooks can be retained as read-only history. NEXUS scans every recognised worksheet across those workbooks, independent of filename and sheet order. For an overlapping month, the latest saved copy is the source of truth; only cells still green `#92D050` are carried. Historical employees are identified from their source abbreviation and described using their latest/current registered assignment. The Employee Register never creates attendance or hours absent from the source workbook.
+The Current FY workbook is replaced after each valid upload and retained on the workstation. Earlier April-to-March workbooks can be retained as read-only history. NEXUS processes recognised month sheets chronologically. Green `#92D050` starts or continues carry into the next month; a later orange/grey state closes it, and absence or a non-green next-month state expires it. Historic green cells never remain live indefinitely. Historical employees are identified from their source abbreviation and described using their latest/current registered assignment. The Employee Register never creates attendance or hours absent from the source workbook.
 
 The selected processing month controls rollover. March remains in the closing FY even when processed during April. Processing April deliberately starts the new FY: the preceding workbook remains unchanged, open carries remain available, and the first April project report initialises the new Current FY workbook from the approved structure.
 
@@ -50,6 +49,10 @@ Set `VITE_ADMIN_TOKEN_SHA256` to a test or operational SHA-256 digest in a local
 
 ## Scope boundary
 
-Sprint 1.0A excludes Third Party Costs, invoice generation, values/rates, automatic commercial invoice/write-off decisions, accounting integrations, cloud/server architecture and company-server access. The TPC workflow remains later controlled work.
+The TPC library reads validated April-to-March monthly sheets and treats red rows as outstanding and black rows as invoiced. Current and historical workbooks persist locally; the newest validated copy for a financial year is authoritative. Missing or unusable project numbers remain discoverable as unallocated until an Office Manager decision is saved locally. Source workbooks are never rewritten.
 
-See [architecture](docs/ARCHITECTURE.md), [testing](docs/TESTING.md), [Employee Register](docs/EMPLOYEE-REGISTER.md), [security](docs/CONFIDENTIALITY-AND-SECURITY.md), [timesheet model](docs/TIMESHEET-DATA-MODEL.md), and [manual acceptance](docs/SPRINT-1-MANUAL-ACCEPTANCE.md).
+The encrypted Employee Viewer publishes only current project hours, carried hours with their origin month, department-filtered colleagues, outstanding project TPCs and discoverable unallocated TPCs. It excludes source filenames, sheet/row evidence, private notes and internal/private hours. TPC input is optional: hours reports continue, while the viewer states when TPC information was not loaded.
+
+NEXUS still excludes invoice generation, billing rates, automatic commercial invoice/write-off decisions, accounting integrations, cloud/server architecture and company-server access.
+
+See the [Office Manager guide](docs/OFFICE-MANAGER-GUIDE.md), [architecture](docs/ARCHITECTURE.md), [testing](docs/TESTING.md), [Employee Register](docs/EMPLOYEE-REGISTER.md), [security](docs/CONFIDENTIALITY-AND-SECURITY.md), and [timesheet model](docs/TIMESHEET-DATA-MODEL.md).

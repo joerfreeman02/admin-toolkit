@@ -72,12 +72,20 @@ function About() {
   return (
     <section className="panel about-page">
       <p className="eyebrow">About NEXUS</p>
-      <h2>Operational automation with professional control</h2>
+      <h2>Timesheet and Invoicing Hours</h2>
       <p>
-        NEXUS consolidates timesheets locally, separates confidential internal
-        hours, and carries forward only the person-level historical hours that
-        the saved financial-year workbooks still mark green. Invoice and rate
-        decisions remain outside this sprint.
+        NEXUS brings monthly timesheets, carried hours, project information and
+        outstanding Third Party Costs into one controlled workflow. It reduces
+        Office Manager administration and gives employees one place to find the
+        information they need when preparing invoices.
+      </p>
+      <h3>EAS FORGE</h3>
+      <p>
+        EAS FORGE is EAS&apos;s internal research and development programme for
+        practical consultancy software. It develops focused tools that reduce
+        repetitive administration, improve consistency and make established
+        consultancy workflows faster while keeping professional judgement with
+        EAS staff.
       </p>
       <section className="creator-section" aria-labelledby="creator-title">
         <img src={creatorPortrait} alt="Portrait of Joe Freeman" />
@@ -85,28 +93,17 @@ function About() {
           <p className="eyebrow">Creator</p>
           <h3 id="creator-title">Joe Freeman</h3>
           <p className="creator-role">
-            Creator &amp; Product Owner — AI Engineering Toolkits
+            Graduate Transport Planner · Creator of EAS FORGE
           </p>
           <p>
-            Joe Freeman conceived and leads the development of the EAS AI
-            Engineering Toolkits programme after identifying recurring
-            consultancy tasks that were repetitive, time-consuming and capable
-            of being improved through carefully controlled automation.
+            Joe Freeman is a Graduate Transport Planner at EAS and the creator
+            of the EAS FORGE internal software programme. Alongside transport
+            planning work, he leads the development of practical internal tools
+            through EAS&apos;s dedicated R&amp;D programme, working with
+            management and end users to turn recurring consultancy and
+            administrative workflows into controlled, tested software.
           </p>
-          <p>
-            Beginning with the Transport Planner Toolkit, the programme has
-            expanded into drainage, flood risk and administrative workflows,
-            with the aim of creating practical software designed around the way
-            consultants actually work.
-          </p>
-          <p>
-            Joe defines the real-world workflows and product requirements,
-            directs the development programme and manually tests each release.
-            The Toolkits are intended to improve efficiency, consistency,
-            traceability and quality while keeping professional judgement at the
-            centre of the consultancy process.
-          </p>
-          <strong>Created by Joe Freeman · EAS AI Engineering Toolkits</strong>
+          <strong>Created by Joe Freeman · EAS FORGE</strong>
         </div>
       </section>
     </section>
@@ -163,7 +160,7 @@ export default function App() {
       <main>
         {view === "home" && (
           <section className="hero">
-            <p className="eyebrow">NEXUS 1.0A - controlled release candidate</p>
+            <p className="eyebrow">NEXUS 1.0.0</p>
             <h1>Monthly timesheets turned into clear, ready-to-use reports.</h1>
             <p>
               NEXUS checks the month&apos;s timesheets, helps with anything it
@@ -203,20 +200,20 @@ export default function App() {
             <h2>Build information</h2>
             <dl>
               <dt>Product</dt>
-              <dd>NEXUS-1.0.0-rc.2</dd>
+              <dd>NEXUS 1.0.0</dd>
               <dt>Module</dt>
-              <dd>TIME-1.0.0-rc.2</dd>
+              <dd>TIME 1.0.0</dd>
               <dt>Build</dt>
               <dd>{__BUILD_ID__}</dd>
-              <dt>Sprint</dt>
-              <dd>Sprint 1.0A.3</dd>
+              <dt>Release</dt>
+              <dd>Production 1.0.0</dd>
             </dl>
           </section>
         )}
       </main>
       <footer>
         <button onClick={nav("diagnostics")}>
-          NEXUS-1.0.0-rc.2 - TIME-1.0.0-rc.2 - {__BUILD_ID__}
+          NEXUS 1.0.0 · TIME 1.0.0 · {__BUILD_ID__}
         </button>
         <span>Created by Joe Freeman</span>
         <span>Files remain on this workstation.</span>

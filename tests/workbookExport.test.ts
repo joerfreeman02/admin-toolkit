@@ -28,6 +28,14 @@ function asArrayBuffer(value: unknown): ArrayBuffer {
   ) as ArrayBuffer;
 }
 
+function fill(argb: string) {
+  return {
+    type: "pattern" as const,
+    pattern: "solid" as const,
+    fgColor: { argb },
+  };
+}
+
 async function template(headerRow = 9) {
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet("Jul 26");
@@ -52,12 +60,19 @@ async function template(headerRow = 9) {
   sheet.getCell(headerRow + 2, 2).border = { bottom: { style: "thin" } };
   sheet.getCell(headerRow + 2, 3).border = { bottom: { style: "thin" } };
   sheet.getCell(headerRow + 2, 4).border = { bottom: { style: "thin" } };
+  for (const column of [2, 3, 4])
+    sheet.getCell(headerRow + 2, column).fill = fill("FFFFC000");
   sheet.getColumn(2).width = 14;
   sheet.getColumn(3).width = 50;
   sheet.getColumn(4).width = 9;
   sheet.getColumn(24).width = 25;
   sheet.getColumn(25).width = 30;
   return asArrayBuffer(await workbook.xlsx.writeBuffer());
+}
+
+function cellFill(cell: ExcelJS.Cell) {
+  if (cell.fill.type !== "pattern") return undefined;
+  return cell.fill.fgColor?.argb;
 }
 
 function register(): EmployeeRegister {
@@ -132,7 +147,7 @@ function acceptedRun() {
 }
 
 describe("Excel outputs", () => {
-  it("generates a parseable project workbook with ordered employee headers", async () => {
+  it("generates neutral data rows while preserving the four commercial legend colours", async () => {
     const run = acceptedRun();
     const data = await generateProjectWorkbook(
       run.result,
@@ -147,9 +162,23 @@ describe("Excel outputs", () => {
     expect(sheet.getCell("D9").value).toBe("EA");
     expect(sheet.getCell("E9").value).toBe("EB");
     expect(sheet.getColumn(2).width).toBe(14);
-    expect(sheet.getCell("C3").fill).toMatchObject({
-      fgColor: { argb: "FFFFFF00" },
-    });
+    expect([3, 4, 5, 6].map((row) => cellFill(sheet.getCell(row, 3)))).toEqual([
+      "FFFFFF00",
+      "FFFFC000",
+      "FF92D050",
+      "FF95A6BD",
+    ]);
+    const commercialFills = new Set([
+      "FFFFFF00",
+      "FFFFC000",
+      "FF92D050",
+      "FF95A6BD",
+    ]);
+    for (let row = 11; row <= 15; row++)
+      for (let column = 2; column <= 7; column++)
+        expect(
+          commercialFills.has(cellFill(sheet.getCell(row, column)) ?? ""),
+        ).toBe(false);
   });
 
   it("writes historical person-level carry detail without collapsing months into an unexplained total", async () => {
@@ -198,12 +227,13 @@ describe("Excel outputs", () => {
     const project = workbook.getWorksheet("Jul 26")!;
     expect(project.getCell("F11").value).toContain("May 26 · EA · 3.00h");
     expect(project.getCell("F11").value).toContain("Jun 26 · EA · 4.00h");
+    expect(cellFill(project.getCell("F11"))).toBeUndefined();
     expect(project.getCell("B12").value).toBe(4200);
     const audit = workbook.getWorksheet("Carry-over Audit")!;
     expect(audit.getCell("A1").value).toBe("Project number");
     expect(audit.getCell("C2").value).toBe("Employee Alpha");
     expect(audit.getCell("E2").value).toBe("Drainage");
-    expect(audit.getCell("N2").value).toBe("Carry · green #92D050");
+    expect(audit.getCell("N2").value).toBe("ACTIVE");
     expect(audit.getCell("H2").value).toBe(2026);
     expect(audit.getCell("I2").value).toBe("Synthetic 2026-27.xlsx");
     expect(audit.getCell("K2").value).toBe("D11");

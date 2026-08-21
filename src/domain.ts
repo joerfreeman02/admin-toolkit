@@ -271,6 +271,41 @@ export interface WorkbookCarryCandidate {
   fill: "#92D050";
 }
 
+export type WorkbookCommercialStatus =
+  | "awaiting"
+  | "invoiced"
+  | "carry"
+  | "closed";
+
+export interface WorkbookProjectMonthState {
+  projectCode?: string;
+  projectDescription?: string;
+  originatingMonth: string;
+  sourceWorkbook: string;
+  sourceWorkbookId: string;
+  sourceWorksheet: string;
+  sourceRow: number;
+  statuses: WorkbookCommercialStatus[];
+  carryReference?: string;
+  notes?: string;
+}
+
+export type HistoricalCarryLifecycleStatus =
+  | "active"
+  | "closed"
+  | "expired"
+  | "retained-unknown"
+  | "already-dealt-with";
+
+export interface HistoricalCarryAuditRecord extends WorkbookCarryCandidate {
+  lifecycleStatus: HistoricalCarryLifecycleStatus;
+  lifecycleStatusMonth?: string;
+  lifecycleEvidence: string;
+  employeeId?: string;
+  employee?: string;
+  department?: Department;
+}
+
 export interface HistoricalCarryRecord extends WorkbookCarryCandidate {
   projectCode?: string;
   employeeId: string;
@@ -285,6 +320,7 @@ export interface LatestMonthlyWorkbookInspection {
   source: WorkbookSource;
   worksheets: MonthlyWorksheet[];
   carryCandidates: WorkbookCarryCandidate[];
+  projectStates?: WorkbookProjectMonthState[];
   warnings: string[];
   errors: string[];
 }
@@ -301,8 +337,101 @@ export interface StoredFinancialYearWorkbook {
   internalCatalogue?: InternalCatalogueItem[];
 }
 
+export type TpcMoneyValue =
+  | { kind: "amount"; amount: number }
+  | { kind: "text"; text: string }
+  | { kind: "blank" };
+
+export interface TpcWorksheet {
+  name: string;
+  month: string;
+  financialYear: string;
+  headerRow: number;
+}
+
+export interface TpcRecord {
+  key: string;
+  originatingDate?: string;
+  originatingMonth: string;
+  originatingYear: number;
+  supplier: string;
+  projectManager?: string;
+  projectNumberRaw?: string;
+  projectCode?: string;
+  projectDescription?: string;
+  description: string;
+  net: TpcMoneyValue;
+  vat: TpcMoneyValue;
+  gross: TpcMoneyValue;
+  notes?: string;
+  sourceFinancialYear: string;
+  sourceWorkbook: string;
+  sourceWorkbookId: string;
+  sourceWorksheet: string;
+  sourceRow: number;
+  status: "outstanding" | "invoiced";
+  statusEvidence: "red-row" | "black-row";
+  monetaryWarning?: string;
+}
+
+export interface TpcWorkbookInspection {
+  financialYear: string;
+  financialYearStart: number;
+  updatedThrough: string;
+  source: WorkbookSource;
+  worksheets: TpcWorksheet[];
+  records: TpcRecord[];
+  warnings: string[];
+  errors: string[];
+}
+
+export interface StoredTpcWorkbook {
+  financialYear: string;
+  role: FinancialYearWorkbookRole;
+  fileName: string;
+  savedAt: string;
+  updatedThrough: string;
+  data: ArrayBuffer;
+  inspection: TpcWorkbookInspection;
+}
+
+export type TpcReviewDecision =
+  | {
+      kind: "project";
+      projectCode: string;
+      projectDescription: string;
+    }
+  | { kind: "non-project" }
+  | { kind: "unallocated" };
+
+export interface TpcReviewState {
+  version: 1;
+  decisions: Record<string, TpcReviewDecision>;
+}
+
+export interface ResolvedTpcRecord extends TpcRecord {
+  resolution: "project" | "non-project" | "unallocated";
+}
+
+export interface TpcReviewIssue {
+  key: string;
+  record: TpcRecord;
+}
+
+export interface TpcResolution {
+  loaded: boolean;
+  records: ResolvedTpcRecord[];
+  warningRecords: TpcRecord[];
+  allocated: ResolvedTpcRecord[];
+  unallocated: ResolvedTpcRecord[];
+  nonProject: ResolvedTpcRecord[];
+  issues: TpcReviewIssue[];
+  warnings: string[];
+}
+
 export interface HistoricalCarryResolution {
   records: HistoricalCarryRecord[];
+  audit: HistoricalCarryAuditRecord[];
   warnings: string[];
   errors: string[];
   issues: HistoricalReviewIssue[];
@@ -349,18 +478,40 @@ export type Carryover = z.infer<typeof CarryoverSchema>;
 export interface PublicProject {
   code?: string;
   description: string;
-  contributors: { employee: string; hours: number }[];
+  contributors: { employee: string; department: Department; hours: number }[];
+  carriedHours: {
+    employee: string;
+    department?: Department;
+    originatingMonth: string;
+    hours: number;
+  }[];
+  outstandingTpcs: PublicTpc[];
   total: number;
+}
+
+export interface PublicTpc {
+  originatingDate?: string;
+  originatingMonth: string;
+  supplier: string;
+  description: string;
+  projectNumberRaw?: string;
+  net: TpcMoneyValue;
+  vat: TpcMoneyValue;
+  gross: TpcMoneyValue;
 }
 
 export interface PublicDataset {
   month: string;
+  employees: { employee: string; department: Department }[];
   projects: PublicProject[];
   statuses: {
     employee: string;
     kind: "unknown-project" | "excluded";
     hours: number;
+    originatingMonth?: string;
   }[];
+  tpcLoaded: boolean;
+  unallocatedTpcs: PublicTpc[];
 }
 
 export interface EncryptedEmployeePublication {

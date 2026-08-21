@@ -2,6 +2,7 @@ import type { Fill, Style, Worksheet } from "exceljs";
 import type {
   ConsolidationResult,
   EmployeeRegister,
+  HistoricalCarryAuditRecord,
   HistoricalCarryRecord,
   ProjectConsolidationRow,
   TimeEntry,
@@ -143,8 +144,10 @@ async function readTemplateProfile(
 }
 
 function applyBodyBorder(style: Partial<Style>) {
+  const neutralStyle = clone(style);
+  delete neutralStyle.fill;
   return {
-    ...clone(style),
+    ...neutralStyle,
     border: {
       top: { style: "thin", color: { argb: FALLBACK.line } },
       bottom: { style: "thin", color: { argb: FALLBACK.line } },
@@ -319,7 +322,6 @@ function applyProjectLayout(
       vertical: "middle",
       wrapText: true,
     };
-    if (projectCarry.length) carry.fill = solidFill(FALLBACK.green);
     const notes = row.getCell(notesColumn);
     notes.value = projectCarry.length
       ? "Green carry remains open. See Carry-over Audit for person, month and source."
@@ -334,9 +336,6 @@ function applyProjectLayout(
     };
     if (projectCarry.length)
       row.height = Math.max(44, 16 * projectCarry.length + 20);
-    if (project.approvedUncoded)
-      for (let column = 2; column <= notesColumn; column++)
-        row.getCell(column).fill = solidFill("FFFFF2CC");
   });
   const unknownCarry = mergeHistoricalUnknownCarry(result, historicalCarry);
   const specialRows = [
@@ -344,27 +343,24 @@ function applyProjectLayout(
       label: "Time in Lieu",
       hoursByEmployee: result.timeInLieuHoursByEmployee,
       total: result.timeInLieuHours,
-      fill: "FFE2F0D9",
       note: "Authorised non-project Time in Lieu; excluded from identified-project billing totals.",
     },
     {
       label: "Unallocated / Unknown Project",
       hoursByEmployee: unknownCarry.hoursByEmployee,
       total: unknownCarry.total,
-      fill: "FFFFF2CC",
       note: "Deliberately unresolved project identity; includes any retained historical Unknown carry and is excluded from identified-project billing totals.",
     },
     {
       label: "Excluded / Discarded Hours",
       hoursByEmployee: result.excludedHoursByEmployee,
       total: result.excludedHours,
-      fill: "FFFCE8E6",
       note: "Deliberately excluded from project and internal allocation; retained for reconciliation.",
     },
   ];
   specialRows.forEach((special, index) => {
     const row = sheet.getRow(firstDataRow + outputProjects.length + index);
-    row.height = special.note.length > 120 ? 56 : 40;
+    row.height = special.note.length > 120 ? 76 : 48;
     row.getCell(2).value = "—";
     row.getCell(3).value = special.label;
     row.getCell(2).style = applyBodyBorder(profile.textStyle);
@@ -385,8 +381,6 @@ function applyProjectLayout(
       vertical: "middle",
       wrapText: true,
     };
-    for (let column = 2; column <= notesColumn; column++)
-      row.getCell(column).fill = solidFill(special.fill);
     row.getCell(3).font = { ...row.getCell(3).font, bold: true };
   });
   sheet.autoFilter = {
@@ -412,7 +406,7 @@ function applyProjectLayout(
 
 function addCarryAudit(
   workbook: import("exceljs").Workbook,
-  historicalCarry: HistoricalCarryRecord[],
+  historicalAudit: HistoricalCarryAuditRecord[],
 ) {
   const sheet = workbook.addWorksheet("Carry-over Audit", {
     properties: { tabColor: { argb: FALLBACK.green } },
@@ -431,16 +425,18 @@ function addCarryAudit(
     "Source cell",
     "Source row",
     "Source column",
-    "Authoritative status",
+    "Lifecycle status",
+    "Lifecycle status month",
+    "Lifecycle evidence",
   ];
   sheet.getRow(1).values = headers;
   styleHeader(sheet.getRow(1), 1, headers.length);
   sheet.views = [{ state: "frozen", ySplit: 1, topLeftCell: "A2" }];
-  historicalCarry.forEach((record, index) => {
+  historicalAudit.forEach((record, index) => {
     sheet.getRow(index + 2).values = [
       record.projectCode ?? "Unknown Project carry",
       record.projectDescription ?? null,
-      record.employee,
+      record.employee ?? null,
       record.employeeAbbreviation,
       record.department,
       record.hours,
@@ -451,13 +447,21 @@ function addCarryAudit(
       record.sourceCell,
       record.sourceRow,
       record.sourceColumn,
-      record.projectCode
-        ? "Carry · green #92D050"
-        : "Unknown Project carry · green #92D050",
+      record.lifecycleStatus === "active"
+        ? "ACTIVE"
+        : record.lifecycleStatus === "closed"
+          ? "CLOSED / subsequently invoiced"
+          : record.lifecycleStatus === "expired"
+            ? "EXPIRED / not propagated"
+            : record.lifecycleStatus === "retained-unknown"
+              ? "ACTIVE / explicitly retained Unknown carry"
+              : "ALREADY DEALT WITH",
+      record.lifecycleStatusMonth ?? null,
+      record.lifecycleEvidence,
     ];
     sheet.getCell(index + 2, 6).numFmt = "0.00";
   });
-  [16, 40, 28, 20, 18, 12, 18, 16, 34, 20, 14, 12, 14, 26].forEach(
+  [16, 40, 28, 20, 18, 12, 18, 16, 34, 20, 14, 12, 14, 34, 20, 70].forEach(
     (width, index) => (sheet.getColumn(index + 1).width = width),
   );
   sheet.autoFilter = {
@@ -471,6 +475,7 @@ export async function generateProjectWorkbook(
   latestWorkbook: ArrayBuffer,
   buildId: string,
   historicalCarry: HistoricalCarryRecord[] = [],
+  historicalAudit?: HistoricalCarryAuditRecord[],
 ): Promise<ArrayBuffer> {
   if (!result.canExport)
     throw new Error(
@@ -487,7 +492,16 @@ export async function generateProjectWorkbook(
     properties: { tabColor: { argb: FALLBACK.navy } },
   });
   applyProjectLayout(sheet, result, profile, buildId, historicalCarry);
-  addCarryAudit(workbook, historicalCarry);
+  addCarryAudit(
+    workbook,
+    historicalAudit ??
+      historicalCarry.map((record) => ({
+        ...record,
+        lifecycleStatus: "active",
+        lifecycleEvidence:
+          "Green carry remains continuous through the latest authoritative monthly state.",
+      })),
+  );
   const buffer = await workbook.xlsx.writeBuffer();
   return asArrayBuffer(buffer);
 }

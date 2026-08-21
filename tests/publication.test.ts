@@ -123,8 +123,14 @@ describe("encrypted Employee Viewer publication", () => {
         employee: "Employee Alpha",
         kind: "unknown-project",
         hours: 2.25,
+        originatingMonth: "2026-07",
       },
-      { employee: "Employee Alpha", kind: "excluded", hours: 1.25 },
+      {
+        employee: "Employee Alpha",
+        kind: "excluded",
+        hours: 1.25,
+        originatingMonth: "2026-07",
+      },
     ]);
     expect(JSON.stringify(dataset)).not.toMatch(
       /Sensitive client|Private exclusion|Management-only|private-timesheet|row/,

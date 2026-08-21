@@ -437,6 +437,8 @@ export function toPublicDataset(
       code: entry.projectCode,
       description: entry.description,
       contributors: [],
+      carriedHours: [],
+      outstandingTpcs: [],
       total: 0,
     };
     const contributor = project.contributors.find(
@@ -446,6 +448,7 @@ export function toPublicDataset(
     else
       project.contributors.push({
         employee: entry.employee,
+        department: "Mixed",
         hours: entry.hours,
       });
     project.total += entry.hours;
@@ -453,6 +456,9 @@ export function toPublicDataset(
   }
   return {
     month,
+    employees: [...new Set(entries.map((entry) => entry.employee))].map(
+      (employee) => ({ employee, department: "Mixed" as const }),
+    ),
     projects: [...projects.values()].sort((a, b) =>
       a.code && b.code
         ? Number(a.code) - Number(b.code)
@@ -476,5 +482,7 @@ export function toPublicDataset(
             : ("excluded" as const),
         hours: entry.hours,
       })),
+    tpcLoaded: false,
+    unallocatedTpcs: [],
   };
 }

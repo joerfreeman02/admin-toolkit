@@ -8,7 +8,9 @@ import type {
   ProcessingResult,
   StoredFinancialYearWorkbook,
   StoredJobRegister,
+  StoredTpcWorkbook,
   TimeEntry,
+  TpcReviewState,
   UncodedReviewDecision,
 } from "./domain";
 import {
@@ -19,6 +21,8 @@ import {
 } from "./consolidation";
 import { LatestMonthlyWorkbookPanel } from "./LatestMonthlyWorkbookPanel";
 import { JobRegisterPanel } from "./JobRegisterPanel";
+import { TpcWorkbookPanel } from "./TpcWorkbookPanel";
+import { TpcReviewPanel } from "./TpcReviewPanel";
 import { HistoricalReviewPanel } from "./HistoricalReviewPanel";
 import { EmployeePublicationPanel } from "./EmployeePublicationPanel";
 import { EmployeeRegisterPanel } from "./EmployeeRegisterPanel";
@@ -47,9 +51,11 @@ import {
 } from "./historicalReview";
 import {
   listFinancialYearWorkbooks,
+  listTpcWorkbooks,
   loadJobRegister,
   saveJobRegister,
   saveFinancialYearWorkbook,
+  saveTpcWorkbook,
 } from "./workstationStore";
 import {
   catalogueFromAnnualWorkbook,
@@ -60,6 +66,8 @@ import {
   mergeInternalCatalogues,
 } from "./projectCatalogue";
 import { parseJobRegister } from "./jobRegister";
+import { inspectTpcWorkbook, resolveTpcRecords } from "./tpcWorkbook";
+import { loadTpcReviewState, saveTpcReviewState } from "./tpcReview";
 import { UncodedReviewCard } from "./UncodedReviewCard";
 import {
   downloadWorkbook,
@@ -279,6 +287,12 @@ export function AdminProcessing({ logout, register, onRegisterChange }: Props) {
   const [jobRegisterLoaded, setJobRegisterLoaded] = useState(false);
   const [jobRegisterLoading, setJobRegisterLoading] = useState(false);
   const [jobRegisterMessage, setJobRegisterMessage] = useState("");
+  const [tpcWorkbooks, setTpcWorkbooks] = useState<StoredTpcWorkbook[]>([]);
+  const [tpcWorkbooksLoaded, setTpcWorkbooksLoaded] = useState(false);
+  const [tpcWorkbookLoading, setTpcWorkbookLoading] = useState(false);
+  const [tpcWorkbookMessage, setTpcWorkbookMessage] = useState("");
+  const [tpcReview, setTpcReview] =
+    useState<TpcReviewState>(loadTpcReviewState);
   const [result, setResult] = useState<ProcessingResult>();
   const [uncodedDecisions, setUncodedDecisions] = useState<
     Record<string, UncodedReviewDecision>
@@ -301,6 +315,18 @@ export function AdminProcessing({ logout, register, onRegisterChange }: Props) {
     [month, workbooks],
   );
   const currentWorkbook = rollover.current;
+  const tpcCurrentWorkbook = tpcWorkbooks.find(
+    (item) => item.financialYear === rollover.processingFinancialYear,
+  );
+  const historicalTpcWorkbooks = useMemo(
+    () =>
+      tpcWorkbooks
+        .filter(
+          (item) => item.financialYear !== rollover.processingFinancialYear,
+        )
+        .sort((a, b) => b.financialYear.localeCompare(a.financialYear)),
+    [tpcWorkbooks, rollover.processingFinancialYear],
+  );
   const historicalWorkbooks = useMemo(
     () =>
       workbooks
@@ -329,8 +355,19 @@ export function AdminProcessing({ logout, register, onRegisterChange }: Props) {
   useEffect(() => {
     let active = true;
     listFinancialYearWorkbooks()
-      .then((stored) => {
-        if (active) setWorkbooks(stored);
+      .then(async (stored) => {
+        const refreshed = await Promise.all(
+          stored.map(async (item) => ({
+            ...item,
+            inspection: await inspectLatestMonthlyWorkbook(item.data, {
+              id: item.inspection.source.id,
+              name: item.fileName,
+              savedAt: item.savedAt,
+              role: item.role,
+            }),
+          })),
+        );
+        if (active) setWorkbooks(refreshed);
       })
       .catch(() => {
         if (active)
@@ -340,6 +377,25 @@ export function AdminProcessing({ logout, register, onRegisterChange }: Props) {
       })
       .finally(() => {
         if (active) setWorkbooksLoaded(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+  useEffect(() => {
+    let active = true;
+    listTpcWorkbooks()
+      .then((stored) => {
+        if (active) setTpcWorkbooks(stored);
+      })
+      .catch(() => {
+        if (active)
+          setTpcWorkbookMessage(
+            "Saved TPC workbooks could not be opened. Choose the latest copy again.",
+          );
+      })
+      .finally(() => {
+        if (active) setTpcWorkbooksLoaded(true);
       });
     return () => {
       active = false;
@@ -368,6 +424,7 @@ export function AdminProcessing({ logout, register, onRegisterChange }: Props) {
     () => saveHistoricalReviewState(historicalReview),
     [historicalReview],
   );
+  useEffect(() => saveTpcReviewState(tpcReview), [tpcReview]);
   const reviewedEntries = useMemo(
     () =>
       result
@@ -427,6 +484,15 @@ export function AdminProcessing({ logout, register, onRegisterChange }: Props) {
         historicalReview,
       ),
     [workbooks, register, month, historicalReview],
+  );
+  const tpcResolution = useMemo(
+    () =>
+      resolveTpcRecords(
+        tpcWorkbooks.map((item) => item.inspection),
+        tpcReview,
+        projectCatalogue,
+      ),
+    [tpcWorkbooks, tpcReview, projectCatalogue],
   );
   const currentReviewItems = useMemo<CurrentReviewItem[]>(
     () => [
@@ -631,6 +697,86 @@ export function AdminProcessing({ logout, register, onRegisterChange }: Props) {
   const chooseLatestWorkbook = (file?: File) => chooseWorkbook(file, false);
   const chooseHistoricalWorkbook = (file?: File) => chooseWorkbook(file, true);
 
+  async function chooseTpcWorkbook(
+    file: File | undefined,
+    historical: boolean,
+  ) {
+    if (!file) return;
+    setTpcWorkbookLoading(true);
+    setTpcWorkbookMessage("");
+    try {
+      const data = await file.arrayBuffer();
+      const savedAt = new Date().toISOString();
+      const first = await inspectTpcWorkbook(data, {
+        name: file.name,
+        savedAt,
+      });
+      const expectedYear = financialYearForMonth(month).label;
+      const role =
+        first.financialYear === expectedYear ? "current" : "historical";
+      if (!historical && role !== "current")
+        throw new Error(
+          `This TPC workbook is for ${first.financialYear}. Choose the ${expectedYear} workbook for the selected month, or add it under Previous TPC years.`,
+        );
+      if (historical && first.financialYear >= expectedYear)
+        throw new Error(
+          `This TPC workbook is for ${first.financialYear}. Choose an earlier financial year here.`,
+        );
+      const inspection = await inspectTpcWorkbook(data, {
+        id: `tpc-financial-year:${first.financialYear}:${savedAt}`,
+        name: file.name,
+        savedAt,
+        role: historical ? "historical" : "current",
+      });
+      const stored: StoredTpcWorkbook = {
+        financialYear: inspection.financialYear,
+        role: historical ? "historical" : "current",
+        fileName: file.name,
+        savedAt,
+        updatedThrough: inspection.updatedThrough,
+        data,
+        inspection,
+      };
+      await saveTpcWorkbook(stored);
+      setTpcWorkbooks((current) => [
+        ...current
+          .filter((item) => item.financialYear !== stored.financialYear)
+          .map((item) =>
+            stored.role === "current" && item.role === "current"
+              ? {
+                  ...item,
+                  role: "historical" as const,
+                  inspection: {
+                    ...item.inspection,
+                    source: {
+                      ...item.inspection.source,
+                      role: "historical" as const,
+                    },
+                  },
+                }
+              : item,
+          ),
+        stored,
+      ]);
+      setTpcWorkbookMessage(
+        `${file.name} saved for ${inspection.financialYear} — updated through ${monthLabel(inspection.updatedThrough)}.`,
+      );
+    } catch (cause) {
+      setTpcWorkbookMessage(
+        cause instanceof Error
+          ? cause.message
+          : "The TPC workbook could not be checked.",
+      );
+    } finally {
+      setTpcWorkbookLoading(false);
+    }
+  }
+
+  const chooseCurrentTpcWorkbook = (file?: File) =>
+    chooseTpcWorkbook(file, false);
+  const chooseHistoricalTpcWorkbook = (file?: File) =>
+    chooseTpcWorkbook(file, true);
+
   async function exportProject() {
     if (
       !exportSource ||
@@ -646,6 +792,7 @@ export function AdminProcessing({ logout, register, onRegisterChange }: Props) {
         exportSource.data,
         __BUILD_ID__,
         carryResolution.records,
+        carryResolution.audit,
       );
       if (rollover.needsInitialisation && isAprilProcessingMonth(month)) {
         const savedAt = new Date().toISOString();
@@ -792,6 +939,16 @@ export function AdminProcessing({ logout, register, onRegisterChange }: Props) {
         loading={jobRegisterLoading || !jobRegisterLoaded}
         message={jobRegisterMessage}
         onChoose={chooseJobRegister}
+      />
+
+      <TpcWorkbookPanel
+        current={tpcCurrentWorkbook}
+        historical={historicalTpcWorkbooks}
+        processingFinancialYear={rollover.processingFinancialYear}
+        loading={tpcWorkbookLoading || !tpcWorkbooksLoaded}
+        message={tpcWorkbookMessage}
+        onChooseCurrent={chooseCurrentTpcWorkbook}
+        onChooseHistorical={chooseHistoricalTpcWorkbook}
       />
 
       <section className="workflow-section" aria-labelledby="timesheets-title">
@@ -984,6 +1141,17 @@ export function AdminProcessing({ logout, register, onRegisterChange }: Props) {
             />
           )}
 
+          {tpcResolution.loaded && (
+            <TpcReviewPanel
+              issues={tpcResolution.issues}
+              state={tpcReview}
+              catalogue={projectCatalogue}
+              warnings={tpcResolution.warnings}
+              warningRecords={tpcResolution.warningRecords}
+              onChange={setTpcReview}
+            />
+          )}
+
           <section
             className="workflow-section"
             aria-labelledby="reconciliation-title"
@@ -1124,6 +1292,8 @@ export function AdminProcessing({ logout, register, onRegisterChange }: Props) {
               <EmployeePublicationPanel
                 result={consolidated}
                 blocked={result.fatalErrors.length > 0}
+                carries={carryResolution.records}
+                tpcResolution={tpcResolution}
               />
             </div>
           </section>

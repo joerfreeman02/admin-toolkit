@@ -23,6 +23,25 @@ export function historicalCandidateKey(candidate: WorkbookCarryCandidate) {
   ].join("|");
 }
 
+export function isStructuredMissingProjectCarry(
+  candidate: WorkbookCarryCandidate | undefined,
+) {
+  return !!(
+    candidate &&
+    candidate.status === "carry" &&
+    candidate.fill === "#92D050" &&
+    !candidate.projectCode &&
+    candidate.employeeAbbreviation.trim() &&
+    Number.isFinite(candidate.hours) &&
+    candidate.hours > 0 &&
+    /^\d{4}-\d{2}$/.test(candidate.originatingMonth) &&
+    candidate.sourceWorksheet.trim() &&
+    candidate.sourceCell.trim() &&
+    candidate.sourceRow > 0 &&
+    candidate.sourceColumn > 0
+  );
+}
+
 export function historicalEmployeeKey(abbreviation: string) {
   return `employee|${normaliseHistoricalAbbreviation(abbreviation)}`;
 }

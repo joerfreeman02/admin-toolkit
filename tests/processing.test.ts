@@ -271,8 +271,8 @@ describe("aggregation, reconciliation and confidentiality", () => {
   it("aggregates repeated employee project rows and project totals", () => {
     const data = toPublicDataset(entries, "2026-07");
     expect(data.projects[0].contributors).toEqual([
-      { employee: "Employee A", hours: 5 },
-      { employee: "Employee B", hours: 4 },
+      { employee: "Employee A", department: "Mixed", hours: 5 },
+      { employee: "Employee B", department: "Mixed", hours: 4 },
     ]);
     expect(data.projects[0].total).toBe(9);
   });

@@ -24,19 +24,28 @@ function DatasetViewer({
   encrypted: boolean;
 }) {
   const employees = useMemo(
-    () => [
-      ...new Set([
-        ...dataset.projects.flatMap((project) =>
-          project.contributors.map((item) => item.employee),
-        ),
-        ...dataset.statuses.map((status) => status.employee),
-      ]),
-    ],
+    () =>
+      dataset.employees.length
+        ? dataset.employees
+        : [
+            ...new Set([
+              ...dataset.projects.flatMap((project) =>
+                project.contributors.map((item) => item.employee),
+              ),
+              ...dataset.statuses.map((status) => status.employee),
+            ]),
+          ].map((employee) => ({ employee, department: "Mixed" as const })),
     [dataset],
   );
-  const [employee, setEmployee] = useState(employees[0] ?? "");
-  const projects = dataset.projects.filter((project) =>
-    project.contributors.some((item) => item.employee === employee),
+  const [employee, setEmployee] = useState(employees[0]?.employee ?? "");
+  const [allDepartments, setAllDepartments] = useState(false);
+  const employeeDepartment = employees.find(
+    (item) => item.employee === employee,
+  )?.department;
+  const projects = dataset.projects.filter(
+    (project) =>
+      project.contributors.some((item) => item.employee === employee) ||
+      project.carriedHours.some((item) => item.employee === employee),
   );
   const [selectedKey, setSelectedKey] = useState("");
   const selected =
@@ -48,7 +57,7 @@ function DatasetViewer({
   );
 
   useEffect(() => {
-    setEmployee(employees[0] ?? "");
+    setEmployee(employees[0]?.employee ?? "");
     setSelectedKey("");
   }, [dataset, employees]);
 
@@ -57,13 +66,13 @@ function DatasetViewer({
       <p className="eyebrow">
         {encrypted
           ? "Approved month · decrypted on this workstation"
-          : "Public area · synthetic demonstration"}
+          : "Employee Viewer demonstration"}
       </p>
       <h2 id="viewer-title">Employee project-hours viewer</h2>
       {!encrypted && (
         <div className="notice">
-          The base site contains fictional demonstration data only. Open an
-          approved encrypted employee-view link to view a real published month.
+          This page contains fictional example data. Open an approved employee
+          link to view a published month.
         </div>
       )}
       <div className="controls">
@@ -82,10 +91,18 @@ function DatasetViewer({
               setSelectedKey("");
             }}
           >
-            {employees.map((name) => (
-              <option key={name}>{name}</option>
+            {employees.map((item) => (
+              <option key={item.employee}>{item.employee}</option>
             ))}
           </select>
+        </label>
+        <label className="inline-check">
+          <input
+            type="checkbox"
+            checked={allDepartments}
+            onChange={(event) => setAllDepartments(event.target.checked)}
+          />
+          View all departments
         </label>
       </div>
       <div className="split">
@@ -103,10 +120,15 @@ function DatasetViewer({
                 {project.code ?? "Uncoded"} · {project.description}
               </span>
               <strong>
-                {project.contributors
-                  .find((item) => item.employee === employee)
-                  ?.hours.toFixed(2)}{" "}
-                hrs
+                {(
+                  (project.contributors.find(
+                    (item) => item.employee === employee,
+                  )?.hours ?? 0) +
+                  project.carriedHours
+                    .filter((item) => item.employee === employee)
+                    .reduce((sum, item) => sum + item.hours, 0)
+                ).toFixed(2)}{" "}
+                hrs relevant
               </strong>
             </button>
           ))}
@@ -117,8 +139,8 @@ function DatasetViewer({
                 .filter((status) => status.kind === "unknown-project")
                 .map((status, index) => (
                   <p key={`unknown-${index}`}>
-                    {dataset.month} — {status.hours.toFixed(2)}h — Unknown
-                    Project
+                    {status.originatingMonth ?? dataset.month} —{" "}
+                    {status.hours.toFixed(2)}h — Unknown Project
                   </p>
                 ))}
             </section>
@@ -130,46 +152,174 @@ function DatasetViewer({
                 .filter((status) => status.kind === "excluded")
                 .map((status, index) => (
                   <p key={`excluded-${index}`}>
-                    {dataset.month} — {status.hours.toFixed(2)}h — Excluded from
-                    allocation
+                    {status.originatingMonth ?? dataset.month} —{" "}
+                    {status.hours.toFixed(2)}h — Excluded from allocation
                   </p>
                 ))}
             </section>
           )}
         </div>
-        <ProjectDetail project={selected} />
+        <ProjectDetail
+          project={selected}
+          employee={employee}
+          department={employeeDepartment}
+          allDepartments={allDepartments}
+        />
       </div>
+      {!dataset.tpcLoaded && (
+        <p className="notice">TPC information not loaded for this month.</p>
+      )}
+      {dataset.tpcLoaded && (
+        <details className="unallocated-tpcs">
+          <summary>Show unallocated TPCs</summary>
+          <p>
+            These costs have not yet been linked to a project. If you recognise
+            one, tell the Office Manager.
+          </p>
+          {dataset.unallocatedTpcs.length ? (
+            dataset.unallocatedTpcs.map((item, index) => (
+              <TpcDetail
+                key={`${item.originatingMonth}|${item.supplier}|${index}`}
+                item={item}
+              />
+            ))
+          ) : (
+            <p className="muted">
+              There are no outstanding unallocated TPCs in the loaded workbooks.
+            </p>
+          )}
+        </details>
+      )}
     </>
   );
 }
 
-function ProjectDetail({ project }: { project?: PublicProject }) {
+function money(value: PublicProject["outstandingTpcs"][number]["gross"]) {
+  if (value.kind === "amount")
+    return new Intl.NumberFormat("en-GB", {
+      style: "currency",
+      currency: "GBP",
+    }).format(value.amount);
+  if (value.kind === "text") return value.text;
+  return "Not recorded";
+}
+
+function TpcDetail({
+  item,
+}: {
+  item: PublicProject["outstandingTpcs"][number];
+}) {
+  return (
+    <article className="tpc-item">
+      <strong>{item.supplier}</strong>
+      <span>
+        {item.originatingDate ?? item.originatingMonth} · {item.description}
+      </span>
+      {item.projectNumberRaw && (
+        <span>Project number entered: {item.projectNumberRaw}</span>
+      )}
+      <span>
+        Net {money(item.net)} · VAT {money(item.vat)} · Gross{" "}
+        {money(item.gross)}
+      </span>
+    </article>
+  );
+}
+
+function ProjectDetail({
+  project,
+  employee,
+  department,
+  allDepartments,
+}: {
+  project?: PublicProject;
+  employee: string;
+  department?: string;
+  allDepartments: boolean;
+}) {
+  const visible =
+    project?.contributors.filter(
+      (item) =>
+        allDepartments ||
+        item.employee === employee ||
+        item.department === "Mixed" ||
+        item.department === department,
+    ) ?? [];
+  const current =
+    project?.contributors.find((item) => item.employee === employee)?.hours ??
+    0;
+  const carried =
+    project?.carriedHours.filter((item) => item.employee === employee) ?? [];
+  const totalRelevant =
+    current + carried.reduce((sum, item) => sum + item.hours, 0);
+  const grossTotal =
+    project?.outstandingTpcs.reduce(
+      (sum, item) =>
+        sum + (item.gross.kind === "amount" ? item.gross.amount : 0),
+      0,
+    ) ?? 0;
+  const numericGrossCount =
+    project?.outstandingTpcs.filter((item) => item.gross.kind === "amount")
+      .length ?? 0;
   return (
     <div className="subpanel">
       <h3>{project?.description ?? "Select a project"}</h3>
       {project && (
-        <table>
-          <thead>
-            <tr>
-              <th>Contributor</th>
-              <th>Hours</th>
-            </tr>
-          </thead>
-          <tbody>
-            {project.contributors.map((item) => (
-              <tr key={item.employee}>
-                <td>{item.employee}</td>
-                <td>{item.hours.toFixed(2)}</td>
-              </tr>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr>
-              <th>Project total</th>
-              <th>{project.total.toFixed(2)}</th>
-            </tr>
-          </tfoot>
-        </table>
+        <>
+          <h4>Current month hours</h4>
+          <p>
+            {employee}: {current.toFixed(2)}h
+          </p>
+          {!!visible.filter((item) => item.employee !== employee).length && (
+            <>
+              <h4>Relevant colleagues</h4>
+              <ul>
+                {visible
+                  .filter((item) => item.employee !== employee)
+                  .map((item) => (
+                    <li key={item.employee}>
+                      {item.employee} — {item.hours.toFixed(2)}h
+                    </li>
+                  ))}
+              </ul>
+            </>
+          )}
+          {!!carried.length && (
+            <>
+              <h4>Historical carried hours</h4>
+              {carried.map((item, index) => (
+                <p key={`${item.originatingMonth}|${index}`}>
+                  Carried from {item.originatingMonth} — {item.hours.toFixed(2)}
+                  h
+                </p>
+              ))}
+            </>
+          )}
+          <p>
+            <strong>Total relevant hours — {totalRelevant.toFixed(2)}h</strong>
+          </p>
+          <h4>Outstanding Third Party Costs</h4>
+          {project.outstandingTpcs.length ? (
+            <>
+              {project.outstandingTpcs.map((item, index) => (
+                <TpcDetail
+                  key={`${item.originatingMonth}|${item.supplier}|${index}`}
+                  item={item}
+                />
+              ))}
+              {numericGrossCount > 0 && (
+                <p>
+                  <strong>
+                    Outstanding TPC total:{" "}
+                    {money({ kind: "amount", amount: grossTotal })} gross
+                  </strong>
+                </p>
+              )}
+            </>
+          ) : (
+            <p className="muted">No outstanding project TPCs are shown.</p>
+          )}
+        </>
       )}
     </div>
   );

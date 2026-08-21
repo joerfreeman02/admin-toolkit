@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import type {
   ConsolidationResult,
   EncryptedEmployeePublication,
+  HistoricalCarryRecord,
+  TpcResolution,
 } from "./domain";
 import {
   EMPLOYEE_VIEWER_TOKEN_KEY,
@@ -28,9 +30,13 @@ function downloadPublication(
 export function EmployeePublicationPanel({
   result,
   blocked = false,
+  carries = [],
+  tpcResolution,
 }: {
   result: ConsolidationResult;
   blocked?: boolean;
+  carries?: HistoricalCarryRecord[];
+  tpcResolution?: TpcResolution;
 }) {
   const [configuredToken, setConfiguredToken] = useState(
     () => localStorage.getItem(EMPLOYEE_VIEWER_TOKEN_KEY) ?? "",
@@ -88,7 +94,7 @@ export function EmployeePublicationPanel({
     setMessage("");
     try {
       const next = await encryptEmployeeDataset(
-        createEmployeeDataset(result),
+        createEmployeeDataset(result, carries, tpcResolution),
         configuredToken,
       );
       const fragment = encodePublicationFragment(next);

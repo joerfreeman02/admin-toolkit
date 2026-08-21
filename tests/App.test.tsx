@@ -7,7 +7,7 @@ beforeEach(() => {
   location.hash = "";
 });
 
-it("shows the synthetic public viewer without internal categories", () => {
+it("shows the demonstration public viewer without internal categories", () => {
   render(<App />);
   fireEvent.click(
     screen.getByRole("button", { name: "Public Employee Viewer" }),
@@ -15,7 +15,8 @@ it("shows the synthetic public viewer without internal categories", () => {
   expect(screen.getByText("Employee project-hours viewer")).toBeVisible();
   expect(screen.queryByText("Holiday")).not.toBeInTheDocument();
   expect(screen.queryByText("Sick Leave")).not.toBeInTheDocument();
-  expect(screen.getByText(/Uncoded · Awaiting project code/)).toBeVisible();
+  expect(screen.getByText("Historical carried hours")).toBeVisible();
+  expect(screen.getByText("Outstanding Third Party Costs")).toBeVisible();
 });
 
 it("redirects admin navigation to the workstation gate", () => {
@@ -71,13 +72,14 @@ it("shows permanent creator attribution and the approved portrait alternative te
     screen.getByRole("img", { name: "Portrait of Joe Freeman" }),
   ).toBeVisible();
   expect(
-    screen.getByText("Creator & Product Owner — AI Engineering Toolkits"),
+    screen.getByText("Graduate Transport Planner · Creator of EAS FORGE"),
   ).toBeVisible();
+  expect(screen.getByText("Created by Joe Freeman · EAS FORGE")).toBeVisible();
 });
 
-it("shows NEXUS 1.0A release-candidate version and build information", () => {
+it("shows NEXUS 1.0.0 production version and build information", () => {
   render(<App />);
-  fireEvent.click(screen.getByRole("button", { name: /NEXUS-1.0.0-rc.2/ }));
-  expect(screen.getByText("TIME-1.0.0-rc.2")).toBeVisible();
-  expect(screen.getByText("Sprint 1.0A.3")).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: /NEXUS 1.0.0/ }));
+  expect(screen.getByText("TIME 1.0.0")).toBeVisible();
+  expect(screen.getByText("Production 1.0.0")).toBeVisible();
 });

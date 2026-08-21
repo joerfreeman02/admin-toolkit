@@ -256,12 +256,98 @@ describe("persistent historical review", () => {
     });
   });
 
+  it("keeps a same-month current green carry in the actionable review path", () => {
+    const missingProject = candidate({
+      projectCode: undefined,
+      originatingMonth: "2026-07",
+      originatingYear: 2026,
+      sourceWorksheet: "Jul 26",
+    });
+    const current = inspection(missingProject);
+    current.source.role = "current";
+    current.source.financialYear = "2026/27";
+    current.financialYear = "2026/27";
+    current.worksheets[0] = {
+      ...current.worksheets[0],
+      name: "Jul 26",
+      month: "2026-07",
+      financialYear: "2026/27",
+    };
+    current.errors = [
+      "Jul 26 D12: these carried hours have no project number. Add or correct the project number, then replace the workbook.",
+    ];
+    const state = emptyHistoricalReviewState();
+    state.employeeMappings.OLD = formerEmployeeMapping("OLD");
+
+    const unresolved = resolveHistoricalCarry(
+      current,
+      register,
+      "2026-07",
+      state,
+    );
+    expect(unresolved.issues).toEqual([
+      expect.objectContaining({ kind: "project", sourceRole: "current" }),
+    ]);
+
+    state.issueResolutions[historicalCandidateKey(missingProject)] = {
+      kind: "unknown-project-carry",
+    };
+    const resolved = resolveHistoricalCarry(
+      current,
+      register,
+      "2026-07",
+      state,
+    );
+    expect(resolved.errors).toEqual([]);
+    expect(resolved.records).toEqual([]);
+    const followingMonth = resolveHistoricalCarry(
+      current,
+      register,
+      "2026-08",
+      state,
+    );
+    expect(followingMonth.records).toEqual([
+      expect.objectContaining({
+        originatingMonth: "2026-07",
+        projectCode: undefined,
+      }),
+    ]);
+  });
+
+  it("normalises legacy missing-project parser wording into the carry decision card", () => {
+    const missingProject = candidate({ projectCode: undefined });
+    const source = inspection(missingProject);
+    source.errors = [
+      "Feb 25 D12: carried hours are missing a job identity. Correct the source workbook.",
+    ];
+    const state = emptyHistoricalReviewState();
+    state.employeeMappings.OLD = formerEmployeeMapping("OLD");
+
+    const resolved = resolveHistoricalCarry(source, register, "2026-07", state);
+
+    expect(resolved.issues).toEqual([
+      expect.objectContaining({
+        kind: "project",
+        sourceRole: "historical",
+        candidate: missingProject,
+      }),
+    ]);
+    expect(resolved.issues).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "workbook-error" }),
+      ]),
+    );
+  });
+
   it("keeps an authorised current-FY missing-project carry with its source provenance", () => {
     const missingProject = candidate({ projectCode: undefined });
     const current = inspection(missingProject);
     current.source.role = "current";
     current.source.financialYear = "2026/27";
     current.financialYear = "2026/27";
+    current.errors = [
+      "Feb 25 D12: these carried hours have no project number. Add or correct the project number, then replace the workbook.",
+    ];
     const state = emptyHistoricalReviewState();
     state.employeeMappings.OLD = formerEmployeeMapping("OLD");
     state.issueResolutions[historicalCandidateKey(missingProject)] = {

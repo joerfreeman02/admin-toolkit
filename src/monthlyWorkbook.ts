@@ -2,12 +2,15 @@ import type { Cell, Fill, Worksheet } from "exceljs";
 import type {
   EmployeeRegister,
   FinancialYearWorkbookRole,
+  HistoricalCarryAuditRecord,
   HistoricalCarryRecord,
   HistoricalCarryResolution,
   HistoricalReviewIssue,
   HistoricalReviewState,
   LatestMonthlyWorkbookInspection,
   WorkbookCarryCandidate,
+  WorkbookCommercialStatus,
+  WorkbookProjectMonthState,
 } from "./domain";
 import { latestEmployeeSnapshot } from "./employeeRegister";
 import { financialYearForMonth } from "./financialYear";
@@ -165,11 +168,36 @@ function parseSheet(
       `${sheet.name}: the green carried-hours key is missing or has changed. Restore green #${CARRY_RGB}, then replace the workbook.`,
     );
   const knownStatusFills = new Set(["none", ...legends.values()]);
+  const statusByFill = new Map<string, WorkbookCommercialStatus>(
+    [...legends.entries()].map(([status, fill]) => [
+      fill,
+      status as WorkbookCommercialStatus,
+    ]),
+  );
   const carryCandidates: WorkbookCarryCandidate[] = [];
+  const projectStates: WorkbookProjectMonthState[] = [];
   const warnedFills = new Set<string>();
   for (let row = headerRow + 2; row <= sheet.rowCount; row++) {
     const projectCode = extractProjectCode(sheet.getCell(row, 2).value);
     const projectDescription = textValue(sheet.getCell(row, 3)) || undefined;
+    const statuses = new Set<WorkbookCommercialStatus>();
+    for (let column = 2; column <= notesColumn; column++) {
+      const status = statusByFill.get(fillKey(sheet.getCell(row, column).fill));
+      if (status) statuses.add(status);
+    }
+    if (projectCode || projectDescription)
+      projectStates.push({
+        projectCode,
+        projectDescription,
+        originatingMonth: month,
+        sourceWorkbook: source.name,
+        sourceWorkbookId: source.id,
+        sourceWorksheet: sheet.name,
+        sourceRow: row,
+        statuses: [...statuses],
+        carryReference: textValue(sheet.getCell(row, carryColumn)) || undefined,
+        notes: textValue(sheet.getCell(row, notesColumn)) || undefined,
+      });
     for (let column = 4; column < carryColumn; column++) {
       const cell = sheet.getCell(row, column);
       const hours = numericValue(cell);
@@ -189,11 +217,6 @@ function parseSheet(
           `${sheet.name} ${sourceCell}: these carried hours have no employee heading. Add the heading, then replace the workbook.`,
         );
         continue;
-      }
-      if (!projectCode) {
-        errors.push(
-          `${sheet.name} ${sourceCell}: these carried hours have no project number. Add or correct the project number, then replace the workbook.`,
-        );
       }
       carryCandidates.push({
         projectCode,
@@ -222,6 +245,7 @@ function parseSheet(
       employeeColumns: carryColumn - 4,
     },
     carryCandidates,
+    projectStates,
   };
 }
 
@@ -298,6 +322,7 @@ export async function inspectLatestMonthlyWorkbook(
     source,
     worksheets: parsed.map((item) => item.worksheet),
     carryCandidates: parsed.flatMap((item) => item.carryCandidates),
+    projectStates: parsed.flatMap((item) => item.projectStates),
     warnings,
     errors,
   };
@@ -311,7 +336,7 @@ function sourcePriority(inspection: LatestMonthlyWorkbookInspection) {
   return `${inspection.source.savedAt}|${inspection.source.role === "current" ? "1" : "0"}|${inspection.source.id}`;
 }
 
-export function authoritativeCarryCandidates(
+function authoritativeSourceByMonth(
   inspections: LatestMonthlyWorkbookInspection[],
 ) {
   const sourceByMonth = new Map<string, LatestMonthlyWorkbookInspection>();
@@ -321,6 +346,13 @@ export function authoritativeCarryCandidates(
       if (!existing || sourcePriority(inspection) > sourcePriority(existing))
         sourceByMonth.set(worksheet.month, inspection);
     }
+  return sourceByMonth;
+}
+
+export function authoritativeCarryCandidates(
+  inspections: LatestMonthlyWorkbookInspection[],
+) {
+  const sourceByMonth = authoritativeSourceByMonth(inspections);
   const seen = new Set<string>();
   return inspections
     .flatMap((inspection) => inspection.carryCandidates)
@@ -345,6 +377,153 @@ export function authoritativeCarryCandidates(
     });
 }
 
+function lifecycleProjectKey(
+  item: Pick<WorkbookCarryCandidate, "projectCode" | "projectDescription">,
+) {
+  if (item.projectCode) return `project:${item.projectCode}`;
+  const description = item.projectDescription?.trim().toLowerCase();
+  return description ? `description:${description}` : undefined;
+}
+
+function authoritativeProjectStates(
+  inspections: LatestMonthlyWorkbookInspection[],
+) {
+  const sourceByMonth = authoritativeSourceByMonth(inspections);
+  return inspections
+    .flatMap((inspection) => {
+      if (inspection.projectStates) return inspection.projectStates;
+      return inspection.carryCandidates.map(
+        (candidate): WorkbookProjectMonthState => ({
+          projectCode: candidate.projectCode,
+          projectDescription: candidate.projectDescription,
+          originatingMonth: candidate.originatingMonth,
+          sourceWorkbook: candidate.sourceWorkbook,
+          sourceWorkbookId: candidate.sourceWorkbookId,
+          sourceWorksheet: candidate.sourceWorksheet,
+          sourceRow: candidate.sourceRow,
+          statuses: ["carry"],
+        }),
+      );
+    })
+    .filter(
+      (state) =>
+        sourceByMonth.get(state.originatingMonth)?.source.id ===
+        state.sourceWorkbookId,
+    );
+}
+
+interface CarryLifecycleDecision {
+  status: "active" | "closed" | "expired";
+  statusMonth?: string;
+  evidence: string;
+}
+
+function carryLifecycleDecisions(
+  inspections: LatestMonthlyWorkbookInspection[],
+  reportingMonth: string,
+) {
+  const sourceByMonth = authoritativeSourceByMonth(inspections);
+  const candidates = authoritativeCarryCandidates(inspections).filter(
+    (candidate) => candidate.originatingMonth <= reportingMonth,
+  );
+  const candidatesByMonth = new Map<string, WorkbookCarryCandidate[]>();
+  for (const candidate of candidates)
+    candidatesByMonth.set(candidate.originatingMonth, [
+      ...(candidatesByMonth.get(candidate.originatingMonth) ?? []),
+      candidate,
+    ]);
+  const statesByMonth = new Map<
+    string,
+    Map<string, WorkbookProjectMonthState[]>
+  >();
+  for (const state of authoritativeProjectStates(inspections)) {
+    if (state.originatingMonth > reportingMonth) continue;
+    const key = lifecycleProjectKey(state);
+    if (!key) continue;
+    const monthStates: Map<string, WorkbookProjectMonthState[]> =
+      statesByMonth.get(state.originatingMonth) ?? new Map();
+    monthStates.set(key, [...(monthStates.get(key) ?? []), state]);
+    statesByMonth.set(state.originatingMonth, monthStates);
+  }
+  const decisions = new Map<string, CarryLifecycleDecision>();
+  const activeByProject = new Map<string, WorkbookCarryCandidate[]>();
+  const months = [...sourceByMonth.keys()]
+    .filter((month) => month <= reportingMonth)
+    .sort();
+  for (const month of months) {
+    const monthStates: Map<string, WorkbookProjectMonthState[]> =
+      statesByMonth.get(month) ?? new Map();
+    for (const [projectKey, active] of [...activeByProject.entries()]) {
+      if (!active.some((candidate) => candidate.originatingMonth < month))
+        continue;
+      const observations = monthStates.get(projectKey) ?? [];
+      const closed = observations.find(
+        (state) =>
+          state.statuses.includes("invoiced") ||
+          state.statuses.includes("closed"),
+      );
+      const propagated = observations.some((state) =>
+        state.statuses.includes("carry"),
+      );
+      if (!closed && propagated) continue;
+      const status = closed ? "closed" : "expired";
+      const evidence = closed
+        ? `${closed.sourceWorksheet} row ${closed.sourceRow}: later ${closed.statuses.includes("closed") ? "grey closed" : "orange invoiced"} state${closed.carryReference ? `; carry reference ${closed.carryReference}` : ""}${closed.notes ? `; ${closed.notes}` : ""}.`
+        : observations.length
+          ? `${observations[0].sourceWorksheet} row ${observations[0].sourceRow}: the project was not carried forward in the next authoritative month.`
+          : `${month}: the project is absent from the next authoritative month.`;
+      for (const candidate of active)
+        if (candidate.originatingMonth < month)
+          decisions.set(historicalCandidateKey(candidate), {
+            status,
+            statusMonth: month,
+            evidence,
+          });
+      activeByProject.delete(projectKey);
+    }
+    for (const candidate of candidatesByMonth.get(month) ?? []) {
+      const key = lifecycleProjectKey(candidate);
+      const candidateKey = historicalCandidateKey(candidate);
+      decisions.set(candidateKey, {
+        status: "active",
+        evidence:
+          month === reportingMonth
+            ? "Green carry starts in the processing month and applies from the next monthly run."
+            : "Green carry remains continuous through the latest authoritative monthly state.",
+      });
+      if (key)
+        activeByProject.set(key, [
+          ...(activeByProject.get(key) ?? []),
+          candidate,
+        ]);
+    }
+  }
+  const processingFinancialYear = financialYearForMonth(reportingMonth).label;
+  const structuredSourceIds = new Set(
+    inspections
+      .filter((inspection) => inspection.projectStates !== undefined)
+      .map((inspection) => inspection.source.id),
+  );
+  const hasProcessingYearAuthority = months.some(
+    (month) => financialYearForMonth(month).label === processingFinancialYear,
+  );
+  if (!hasProcessingYearAuthority)
+    for (const active of activeByProject.values())
+      for (const candidate of active)
+        if (
+          structuredSourceIds.has(candidate.sourceWorkbookId) &&
+          financialYearForMonth(candidate.originatingMonth).label <
+            processingFinancialYear
+        )
+          decisions.set(historicalCandidateKey(candidate), {
+            status: "expired",
+            statusMonth: reportingMonth,
+            evidence:
+              "The previous-financial-year carry is not demonstrated in the current financial-year workbook.",
+          });
+  return { candidates, decisions };
+}
+
 export function resolveHistoricalCarry(
   inspection:
     | LatestMonthlyWorkbookInspection
@@ -354,23 +533,44 @@ export function resolveHistoricalCarry(
   reportingMonth: string,
   reviewState: HistoricalReviewState = emptyHistoricalReviewState(),
 ): HistoricalCarryResolution {
-  if (!inspection) return { records: [], warnings: [], errors: [], issues: [] };
+  if (!inspection)
+    return { records: [], audit: [], warnings: [], errors: [], issues: [] };
   const inspections = Array.isArray(inspection) ? inspection : [inspection];
   const warnings: string[] = [];
   const errors: string[] = [];
   const issues: HistoricalReviewIssue[] = [];
   const records: HistoricalCarryRecord[] = [];
+  const audit: HistoricalCarryAuditRecord[] = [];
   const currentEmployees = latestEmployeeSnapshot(register, true);
   const sourceById = new Map(
     inspections.map((item) => [item.source.id, item] as const),
   );
-  const candidateEvidence = new Set<string>();
-  for (const candidate of authoritativeCarryCandidates(inspections)) {
-    if (candidate.originatingMonth >= reportingMonth) continue;
+  const processingFinancialYear = financialYearForMonth(reportingMonth).label;
+  const missingProjectCounts = new Map<string, number>();
+  const lifecycle = carryLifecycleDecisions(inspections, reportingMonth);
+  for (const candidate of lifecycle.candidates) {
+    const isProcessingMonth = candidate.originatingMonth === reportingMonth;
     const source = sourceById.get(candidate.sourceWorkbookId);
-    const sourceRole = source?.source.role ?? "historical";
+    const sourceFinancialYear =
+      source?.financialYear ??
+      financialYearForMonth(candidate.originatingMonth).label;
+    const sourceRole =
+      sourceFinancialYear < processingFinancialYear ? "historical" : "current";
     const candidateKey = historicalCandidateKey(candidate);
     const issueResolution = reviewState.issueResolutions[candidateKey];
+    const automaticLifecycle = lifecycle.decisions.get(candidateKey) ?? {
+      status: "expired" as const,
+      evidence:
+        "The carry is not present in the authoritative monthly lifecycle.",
+    };
+    const missingProjectEvidence = !candidate.projectCode
+      ? `${candidate.sourceWorksheet} ${candidate.sourceCell}: these carried hours have no project number. Add or correct the project number, then replace the workbook.`
+      : undefined;
+    if (missingProjectEvidence)
+      missingProjectCounts.set(
+        candidate.sourceWorkbookId,
+        (missingProjectCounts.get(candidate.sourceWorkbookId) ?? 0) + 1,
+      );
     let projectCode = candidate.projectCode;
     let projectDescription = candidate.projectDescription;
     if (!projectCode && issueResolution?.kind === "project") {
@@ -379,15 +579,40 @@ export function resolveHistoricalCarry(
     }
     const keepAsUnknownCarry =
       issueResolution?.kind === "unknown-project-carry";
+    if (
+      sourceRole === "historical" &&
+      (issueResolution?.kind === "already-dealt-with" ||
+        issueResolution?.kind === "exclude")
+    ) {
+      audit.push({
+        ...candidate,
+        lifecycleStatus: "already-dealt-with",
+        lifecycleEvidence: "Explicitly marked as already dealt with.",
+      });
+      continue;
+    }
+    const retainedUnknown =
+      keepAsUnknownCarry && automaticLifecycle.status !== "closed";
+    if (automaticLifecycle.status !== "active" && !retainedUnknown) {
+      audit.push({
+        ...candidate,
+        lifecycleStatus: automaticLifecycle.status,
+        lifecycleStatusMonth: automaticLifecycle.statusMonth,
+        lifecycleEvidence: automaticLifecycle.evidence,
+      });
+      continue;
+    }
+    const auditRecord: HistoricalCarryAuditRecord = {
+      ...candidate,
+      lifecycleStatus: retainedUnknown ? "retained-unknown" : "active",
+      lifecycleStatusMonth: automaticLifecycle.statusMonth,
+      lifecycleEvidence: retainedUnknown
+        ? "Explicitly retained as Unknown Project carry."
+        : automaticLifecycle.evidence,
+    };
     if (!projectCode && !keepAsUnknownCarry) {
-      const evidence = `${candidate.sourceWorksheet} ${candidate.sourceCell}: these carried hours have no project number. Add or correct the project number, then replace the workbook.`;
-      candidateEvidence.add(evidence);
-      if (
-        sourceRole === "historical" &&
-        (issueResolution?.kind === "already-dealt-with" ||
-          issueResolution?.kind === "exclude")
-      )
-        continue;
+      const evidence = missingProjectEvidence!;
+      audit.push(auditRecord);
       errors.push(evidence);
       issues.push({
         key: candidateKey,
@@ -403,19 +628,28 @@ export function resolveHistoricalCarry(
       });
       continue;
     }
+    // The selected month is not published as a historical carry until the
+    // following run. It still needs the same explicit decision now, otherwise
+    // its parser error would render as a generic Skip/View-only source card.
+    if (isProcessingMonth) {
+      audit.push(auditRecord);
+      continue;
+    }
     const target = normaliseAbbreviation(candidate.employeeAbbreviation);
     const mappedEmployeeId = reviewState.employeeMappings[target];
     const formerAbbreviation = mappedEmployeeId
       ? formerEmployeeAbbreviation(mappedEmployeeId)
       : undefined;
     if (formerAbbreviation) {
-      records.push({
+      const record = {
         ...candidate,
         projectCode,
         projectDescription,
         employeeId: mappedEmployeeId!,
         employee: `Former employee (${formerAbbreviation})`,
-      });
+      };
+      records.push(record);
+      audit.push({ ...auditRecord, ...record });
       continue;
     }
     const matchingIds = new Set(
@@ -446,17 +680,20 @@ export function resolveHistoricalCarry(
           employeeAbbreviation: candidate.employeeAbbreviation,
           candidate,
         });
+      audit.push(auditRecord);
       continue;
     }
     const employee = matches[0];
-    records.push({
+    const record = {
       ...candidate,
       projectCode,
       projectDescription,
       employeeId: employee.id,
       employee: employee.fullName,
       department: employee.department,
-    });
+    };
+    records.push(record);
+    audit.push({ ...auditRecord, ...record });
   }
   for (const item of inspections) {
     for (const warning of new Set(item.warnings)) {
@@ -477,8 +714,11 @@ export function resolveHistoricalCarry(
         technicalEvidence: warning,
       });
     }
+    const errorsAreLegacyMissingProjectMarkers =
+      item.errors.length > 0 &&
+      item.errors.length === (missingProjectCounts.get(item.source.id) ?? 0);
     for (const error of new Set(item.errors)) {
-      if (candidateEvidence.has(error)) continue;
+      if (errorsAreLegacyMissingProjectMarkers) continue;
       const key = historicalSourceIssueKey(
         item.financialYear,
         item.source.role,
@@ -506,8 +746,18 @@ export function resolveHistoricalCarry(
       a.sourceRow - b.sourceRow ||
       a.sourceColumn - b.sourceColumn,
   );
+  audit.sort(
+    (a, b) =>
+      a.originatingMonth.localeCompare(b.originatingMonth) ||
+      Number(a.projectCode ?? Number.MAX_SAFE_INTEGER) -
+        Number(b.projectCode ?? Number.MAX_SAFE_INTEGER) ||
+      a.employeeAbbreviation.localeCompare(b.employeeAbbreviation) ||
+      a.sourceRow - b.sourceRow ||
+      a.sourceColumn - b.sourceColumn,
+  );
   return {
     records,
+    audit,
     warnings: [...new Set(warnings)],
     errors: [...new Set(errors)],
     issues,

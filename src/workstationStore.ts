@@ -2,14 +2,16 @@ import type {
   EncryptedEmployeePublication,
   StoredJobRegister,
   StoredFinancialYearWorkbook,
+  StoredTpcWorkbook,
 } from "./domain";
 
 const DATABASE_NAME = "eas-admin-toolkit-workstation-v1";
-const DATABASE_VERSION = 4;
+const DATABASE_VERSION = 5;
 const LEGACY_TEMPLATE_STORE = "annual-template";
 const PUBLICATION_STORE = "employee-publications";
 const FINANCIAL_YEAR_STORE = "financial-year-workbooks";
 const JOB_REGISTER_STORE = "job-register";
+const TPC_FINANCIAL_YEAR_STORE = "tpc-financial-year-workbooks";
 
 function openDatabase() {
   return new Promise<IDBDatabase>((resolve, reject) => {
@@ -24,10 +26,67 @@ function openDatabase() {
         database.createObjectStore(FINANCIAL_YEAR_STORE);
       if (!database.objectStoreNames.contains(JOB_REGISTER_STORE))
         database.createObjectStore(JOB_REGISTER_STORE);
+      if (!database.objectStoreNames.contains(TPC_FINANCIAL_YEAR_STORE))
+        database.createObjectStore(TPC_FINANCIAL_YEAR_STORE);
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () =>
       reject(request.error ?? new Error("Local storage unavailable."));
+  });
+}
+
+export function listTpcWorkbooks() {
+  return requestValue<StoredTpcWorkbook[]>(
+    TPC_FINANCIAL_YEAR_STORE,
+    "readonly",
+    (store) => store.getAll(),
+  );
+}
+
+export async function saveTpcWorkbook(workbook: StoredTpcWorkbook) {
+  const database = await openDatabase();
+  return new Promise<void>((resolve, reject) => {
+    const transaction = database.transaction(
+      TPC_FINANCIAL_YEAR_STORE,
+      "readwrite",
+    );
+    const store = transaction.objectStore(TPC_FINANCIAL_YEAR_STORE);
+    const getAll = store.getAll();
+    getAll.onsuccess = () => {
+      if (workbook.role === "current") {
+        for (const item of getAll.result as StoredTpcWorkbook[])
+          if (
+            item.role === "current" &&
+            item.financialYear !== workbook.financialYear
+          )
+            store.put(
+              {
+                ...item,
+                role: "historical",
+                inspection: {
+                  ...item.inspection,
+                  source: { ...item.inspection.source, role: "historical" },
+                },
+              },
+              item.financialYear,
+            );
+      }
+      store.put(workbook, workbook.financialYear);
+    };
+    getAll.onerror = () =>
+      reject(
+        getAll.error ?? new Error("Saved TPC workbook list is unavailable."),
+      );
+    transaction.oncomplete = () => {
+      database.close();
+      resolve();
+    };
+    transaction.onerror = () => {
+      database.close();
+      reject(
+        transaction.error ?? new Error("The TPC workbook could not be saved."),
+      );
+    };
   });
 }
 

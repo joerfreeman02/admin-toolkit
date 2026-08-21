@@ -1,10 +1,12 @@
 import ExcelJS from "exceljs";
 import { describe, expect, it } from "vitest";
 import type { Department, EmployeeRegister } from "../src/domain";
+import { consolidateEntries } from "../src/consolidation";
 import {
   inspectLatestMonthlyWorkbook,
   resolveHistoricalCarry,
 } from "../src/monthlyWorkbook";
+import { createEmployeeDataset } from "../src/publication";
 
 const STATUS = {
   awaiting: "FFFFFF00",
@@ -122,7 +124,7 @@ function register(): EmployeeRegister {
 }
 
 describe("Latest Monthly Workbook carry-over", () => {
-  it("scans every monthly worksheet in chronological order and preserves person-level provenance", async () => {
+  it("keeps a genuine green-to-green-to-green lifecycle active with person-level provenance", async () => {
     const data = await workbookBuffer([
       {
         name: "Jul 26",
@@ -185,7 +187,7 @@ describe("Latest Monthly Workbook carry-over", () => {
       "2026-08",
     );
     expect(resolution.errors).toEqual([]);
-    expect(resolution.records).toHaveLength(7);
+    expect(resolution.records).toHaveLength(5);
     expect(
       resolution.records
         .filter(
@@ -200,13 +202,19 @@ describe("Latest Monthly Workbook carry-over", () => {
     ]);
     expect(
       resolution.records.find((record) => record.employeeId === "beta"),
-    ).toMatchObject({ department: "Drainage", projectCode: "4300" });
+    ).toMatchObject({ department: "Drainage", projectCode: "4100" });
     expect(
       resolution.records.find((record) => record.employeeId === "mixed"),
     ).toMatchObject({ department: "Mixed", hours: 1 });
     expect(
       new Set(resolution.records.map((record) => record.projectCode)),
-    ).toEqual(new Set(["4100", "4200", "4300"]));
+    ).toEqual(new Set(["4100"]));
+    expect(
+      resolution.audit.find((record) => record.projectCode === "4200"),
+    ).toMatchObject({
+      lifecycleStatus: "expired",
+      lifecycleStatusMonth: "2026-06",
+    });
   });
 
   it("uses only the workbook's current green state and excludes closed or current-month cells", async () => {
@@ -256,7 +264,12 @@ describe("Latest Monthly Workbook carry-over", () => {
         },
       ]),
     );
-    expect(missingProject.errors.join(" ")).toMatch(/no project number/i);
+    expect(missingProject.errors).toEqual([]);
+    expect(
+      resolveHistoricalCarry(missingProject, register(), "2026-06").issues,
+    ).toEqual([
+      expect.objectContaining({ kind: "project", sourceRole: "current" }),
+    ]);
 
     const workbook = new ExcelJS.Workbook();
     addMonthSheet(workbook, "May 26", ["EA"], []);
@@ -321,11 +334,11 @@ describe("Latest Monthly Workbook carry-over", () => {
     ).rejects.toThrow(/headings are missing/i);
   });
 
-  it("scans current and previous financial years together and preserves workbook, month, year and cell", async () => {
+  it("seeds a previous March carry only when April continues it across the financial year", async () => {
     const previous = await inspectLatestMonthlyWorkbook(
       await workbookBuffer([
         {
-          name: "Apr 25",
+          name: "Mar 26",
           abbreviations: ["EA"],
           projects: [
             {
@@ -345,12 +358,12 @@ describe("Latest Monthly Workbook carry-over", () => {
     const current = await inspectLatestMonthlyWorkbook(
       await workbookBuffer([
         {
-          name: "May 26",
+          name: "Apr 26",
           abbreviations: ["EB"],
           projects: [
             {
-              code: 4200,
-              description: "Current-year carry",
+              code: 4100,
+              description: "Cross-year carry",
               cells: [{ abbreviation: "EB", hours: 3, fill: STATUS.carry }],
             },
           ],
@@ -367,15 +380,15 @@ describe("Latest Monthly Workbook carry-over", () => {
     const resolution = resolveHistoricalCarry(
       [current, previous],
       register(),
-      "2026-08",
+      "2026-05",
     );
     expect(resolution.errors).toEqual([]);
     expect(resolution.records).toHaveLength(2);
     expect(resolution.records[0]).toMatchObject({
-      originatingMonth: "2025-04",
-      originatingYear: 2025,
+      originatingMonth: "2026-03",
+      originatingYear: 2026,
       sourceWorkbook: "misleading-current-name.xlsx",
-      sourceWorksheet: "Apr 25",
+      sourceWorksheet: "Mar 26",
       sourceCell: "D10",
     });
   });
@@ -477,13 +490,252 @@ describe("Latest Monthly Workbook carry-over", () => {
     const records = resolveHistoricalCarry(
       [original, duplicate],
       register(),
-      "2026-08",
+      "2026-06",
     ).records;
     expect(records).toHaveLength(2);
     expect(records.map((item) => item.originatingMonth)).toEqual([
       "2026-04",
       "2026-05",
     ]);
+  });
+
+  it("expires a green carry when the project is absent from the next recognised month", async () => {
+    const inspection = await inspectLatestMonthlyWorkbook(
+      await workbookBuffer([
+        {
+          name: "May 26",
+          abbreviations: ["EA"],
+          projects: [
+            {
+              code: 4100,
+              description: "Stops after May",
+              cells: [{ abbreviation: "EA", hours: 2, fill: STATUS.carry }],
+            },
+          ],
+        },
+        {
+          name: "Jun 26",
+          abbreviations: ["EA"],
+          projects: [
+            {
+              code: 4200,
+              description: "Different project",
+              cells: [{ abbreviation: "EA", hours: 1 }],
+            },
+          ],
+        },
+      ]),
+    );
+    const resolution = resolveHistoricalCarry(
+      inspection,
+      register(),
+      "2026-07",
+    );
+    expect(resolution.records).toEqual([]);
+    expect(resolution.audit).toEqual([
+      expect.objectContaining({
+        projectCode: "4100",
+        lifecycleStatus: "expired",
+        lifecycleStatusMonth: "2026-06",
+      }),
+    ]);
+  });
+
+  it.each([
+    ["orange invoice", STATUS.invoiced, "closed"],
+    ["grey closed state", STATUS.closed, "closed"],
+  ])(
+    "lets a later %s supersede earlier green",
+    async (_name, laterFill, expected) => {
+      const inspection = await inspectLatestMonthlyWorkbook(
+        await workbookBuffer([
+          {
+            name: "May 26",
+            abbreviations: ["EA"],
+            projects: [
+              {
+                code: 4100,
+                description: "Closed later",
+                cells: [{ abbreviation: "EA", hours: 2, fill: STATUS.carry }],
+              },
+            ],
+          },
+          {
+            name: "Jun 26",
+            abbreviations: ["EA"],
+            projects: [
+              {
+                code: 4100,
+                description: "Closed later",
+                cells: [{ abbreviation: "EA", hours: 2, fill: laterFill }],
+              },
+            ],
+          },
+        ]),
+      );
+      const resolution = resolveHistoricalCarry(
+        inspection,
+        register(),
+        "2026-07",
+      );
+      expect(resolution.records).toEqual([]);
+      expect(resolution.audit[0]).toMatchObject({
+        lifecycleStatus: expected,
+        lifecycleStatusMonth: "2026-06",
+      });
+    },
+  );
+
+  it("closes Starveacres and keeps Hampton Mead's later green as a separate lifecycle that expires in April", async () => {
+    const previous = await inspectLatestMonthlyWorkbook(
+      await workbookBuffer([
+        {
+          name: "Jan 26",
+          abbreviations: ["EA", "EB"],
+          projects: [
+            {
+              code: 6526,
+              description: "5 Hampton Mead, Loughton",
+              cells: [{ abbreviation: "EA", hours: 0.5, fill: STATUS.carry }],
+            },
+          ],
+        },
+        {
+          name: "Feb 26",
+          abbreviations: ["EA", "EB"],
+          projects: [
+            {
+              code: 6526,
+              description: "5 Hampton Mead, Loughton",
+              cells: [
+                { abbreviation: "EA", hours: 4.5, fill: STATUS.invoiced },
+              ],
+            },
+          ],
+        },
+        {
+          name: "Mar 26",
+          abbreviations: ["EA", "EB"],
+          projects: [
+            {
+              code: 6526,
+              description: "5 Hampton Mead, Loughton",
+              cells: [{ abbreviation: "EB", hours: 0.5, fill: STATUS.carry }],
+            },
+          ],
+        },
+      ]),
+      { role: "historical" },
+    );
+    const current = await inspectLatestMonthlyWorkbook(
+      await workbookBuffer([
+        { name: "Apr 26", abbreviations: ["EA", "EB"], projects: [] },
+        {
+          name: "May 26",
+          abbreviations: ["EA", "EB"],
+          projects: [
+            {
+              code: 5752,
+              description: "Starveacres, 16 Watford Road, Radlett",
+              cells: [{ abbreviation: "EA", hours: 0.5, fill: STATUS.carry }],
+            },
+          ],
+        },
+        {
+          name: "Jun 26",
+          abbreviations: ["EA", "EB"],
+          projects: [
+            {
+              code: 5752,
+              description: "Starveacres, 16 Watford Road, Radlett",
+              cells: [{ abbreviation: "EA", hours: 2.25, fill: STATUS.carry }],
+            },
+          ],
+        },
+        {
+          name: "Jul 26",
+          abbreviations: ["EA", "EB"],
+          projects: [
+            {
+              code: 5752,
+              description: "Starveacres, 16 Watford Road, Radlett",
+              cells: [
+                { abbreviation: "EA", hours: 10.75, fill: STATUS.invoiced },
+              ],
+            },
+          ],
+        },
+      ]),
+      { role: "current" },
+    );
+    const resolution = resolveHistoricalCarry(
+      [previous, current],
+      register(),
+      "2026-07",
+    );
+    expect(
+      resolution.records.filter((record) =>
+        ["5752", "6526"].includes(record.projectCode ?? ""),
+      ),
+    ).toEqual([]);
+    expect(
+      resolution.audit.filter((record) => record.projectCode === "5752"),
+    ).toEqual([
+      expect.objectContaining({
+        originatingMonth: "2026-05",
+        lifecycleStatus: "closed",
+        lifecycleStatusMonth: "2026-07",
+      }),
+      expect.objectContaining({
+        originatingMonth: "2026-06",
+        lifecycleStatus: "closed",
+        lifecycleStatusMonth: "2026-07",
+      }),
+    ]);
+    expect(
+      resolution.audit.find(
+        (record) =>
+          record.projectCode === "6526" &&
+          record.originatingMonth === "2026-01",
+      ),
+    ).toMatchObject({
+      employeeAbbreviation: "EA",
+      lifecycleStatus: "closed",
+      lifecycleStatusMonth: "2026-02",
+    });
+    expect(
+      resolution.audit.find(
+        (record) =>
+          record.projectCode === "6526" &&
+          record.originatingMonth === "2026-03",
+      ),
+    ).toMatchObject({
+      employeeAbbreviation: "EB",
+      lifecycleStatus: "expired",
+      lifecycleStatusMonth: "2026-04",
+    });
+    const currentRun = consolidateEntries(
+      [
+        {
+          employee: "Employee Alpha",
+          reportingMonth: "2026-07",
+          projectCode: "5752",
+          description: "Starveacres, 16 Watford Road, Radlett",
+          hours: 1.25,
+          classification: "project",
+          trace: { file: "current.xlsx", worksheet: "Jul 26", row: 5 },
+        },
+      ],
+      register(),
+      "2026-07",
+    );
+    const viewer = createEmployeeDataset(currentRun, resolution.records);
+    expect(
+      viewer.projects.find((project) => project.code === "5752"),
+    ).toMatchObject({
+      contributors: [expect.objectContaining({ hours: 1.25 })],
+      carriedHours: [],
+    });
   });
 
   it("resolves pre-effective-date history to the employee's latest department without manufacturing other employees", async () => {
@@ -548,7 +800,7 @@ describe("Latest Monthly Workbook carry-over", () => {
     const records = resolveHistoricalCarry(
       inspection,
       employeeRegister,
-      "2026-08",
+      "2026-05",
     ).records;
     expect(records).toHaveLength(1);
     expect(records[0]).toMatchObject({

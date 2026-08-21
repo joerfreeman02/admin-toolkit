@@ -891,6 +891,27 @@ main {
   padding: 0.8rem;
   margin-bottom: 0.5rem;
 }
+.tpc-item {
+  background: #fff;
+  border: 1px solid var(--line);
+  display: grid;
+  gap: 0.25rem;
+  margin: 0.65rem 0;
+  padding: 0.8rem;
+}
+.tpc-item span {
+  color: var(--muted);
+}
+.unallocated-tpcs {
+  border-top: 1px solid var(--line);
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+}
+.unallocated-tpcs summary {
+  color: var(--green);
+  cursor: pointer;
+  font-weight: 750;
+}
 .table-wrap {
   overflow: auto;
 }

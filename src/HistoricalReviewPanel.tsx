@@ -9,6 +9,8 @@ import type {
 import { latestEmployeeSnapshot } from "./employeeRegister";
 import {
   formerEmployeeMapping,
+  historicalCandidateKey,
+  isStructuredMissingProjectCarry,
   normaliseHistoricalAbbreviation,
 } from "./historicalReview";
 import {
@@ -60,6 +62,14 @@ function HistoricalIssueCard({
       catalogue,
     ],
   );
+  const structuredMissingProjectCarry = isStructuredMissingProjectCarry(
+    issue.candidate,
+  );
+  const canResolveProject =
+    issue.kind === "project" || structuredMissingProjectCarry;
+  const resolutionKey = structuredMissingProjectCarry
+    ? historicalCandidateKey(issue.candidate!)
+    : issue.key;
 
   return (
     <article className="guided-review-card">
@@ -116,7 +126,7 @@ function HistoricalIssueCard({
           </button>
         </div>
       )}
-      {issue.kind === "project" && (
+      {canResolveProject && (
         <div className="review-action">
           <label>
             Search projects
@@ -133,7 +143,7 @@ function HistoricalIssueCard({
                 type="button"
                 key={`${project.code}|${project.description}`}
                 onClick={() =>
-                  onResolve(issue.key, {
+                  onResolve(resolutionKey, {
                     kind: "project",
                     projectCode: project.code,
                     projectDescription: project.description,
@@ -150,7 +160,7 @@ function HistoricalIssueCard({
                 className="primary"
                 type="button"
                 onClick={() =>
-                  onResolve(issue.key, { kind: "already-dealt-with" })
+                  onResolve(resolutionKey, { kind: "already-dealt-with" })
                 }
               >
                 Already dealt with — don&apos;t carry forward
@@ -159,7 +169,7 @@ function HistoricalIssueCard({
             <button
               type="button"
               onClick={() =>
-                onResolve(issue.key, { kind: "unknown-project-carry" })
+                onResolve(resolutionKey, { kind: "unknown-project-carry" })
               }
             >
               Keep as Unknown Project carry

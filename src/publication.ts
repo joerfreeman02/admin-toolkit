@@ -2,7 +2,11 @@ import { z } from "zod";
 import type {
   ConsolidationResult,
   EncryptedEmployeePublication,
+  HistoricalCarryRecord,
   PublicDataset,
+  PublicProject,
+  PublicTpc,
+  TpcResolution,
 } from "./domain";
 
 export const EMPLOYEE_VIEWER_TOKEN_KEY = "eas-employee-viewer-token-v1";
@@ -28,6 +32,19 @@ const EncryptedPublicationSchema = z.object({
 
 const PublicDatasetSchema = z.object({
   month: z.string().regex(/^\d{4}-\d{2}$/),
+  employees: z
+    .array(
+      z.object({
+        employee: z.string().min(1),
+        department: z.enum([
+          "Drainage",
+          "Transport",
+          "Mixed",
+          "Sustainability",
+        ]),
+      }),
+    )
+    .default([]),
   projects: z.array(
     z.object({
       code: z.string().optional(),
@@ -35,9 +52,25 @@ const PublicDatasetSchema = z.object({
       contributors: z.array(
         z.object({
           employee: z.string().min(1),
+          department: z
+            .enum(["Drainage", "Transport", "Mixed", "Sustainability"])
+            .default("Mixed"),
           hours: z.number().nonnegative(),
         }),
       ),
+      carriedHours: z
+        .array(
+          z.object({
+            employee: z.string().min(1),
+            department: z
+              .enum(["Drainage", "Transport", "Mixed", "Sustainability"])
+              .optional(),
+            originatingMonth: z.string().regex(/^\d{4}-\d{2}$/),
+            hours: z.number().positive(),
+          }),
+        )
+        .default([]),
+      outstandingTpcs: z.array(z.lazy(() => PublicTpcSchema)).default([]),
       total: z.number().nonnegative(),
     }),
   ),
@@ -46,8 +79,31 @@ const PublicDatasetSchema = z.object({
       employee: z.string().min(1),
       kind: z.enum(["unknown-project", "excluded"]),
       hours: z.number().nonnegative(),
+      originatingMonth: z
+        .string()
+        .regex(/^\d{4}-\d{2}$/)
+        .optional(),
     }),
   ),
+  tpcLoaded: z.boolean().default(false),
+  unallocatedTpcs: z.array(z.lazy(() => PublicTpcSchema)).default([]),
+});
+
+const TpcMoneySchema = z.union([
+  z.object({ kind: z.literal("amount"), amount: z.number() }),
+  z.object({ kind: z.literal("text"), text: z.string() }),
+  z.object({ kind: z.literal("blank") }),
+]);
+
+const PublicTpcSchema: z.ZodType<PublicTpc> = z.object({
+  originatingDate: z.string().optional(),
+  originatingMonth: z.string().regex(/^\d{4}-\d{2}$/),
+  supplier: z.string().min(1),
+  description: z.string().min(1),
+  projectNumberRaw: z.string().optional(),
+  net: TpcMoneySchema,
+  vat: TpcMoneySchema,
+  gross: TpcMoneySchema,
 });
 
 function bytesToBase64Url(bytes: Uint8Array) {
@@ -97,24 +153,81 @@ export function generateEmployeeViewerToken() {
 
 export function createEmployeeDataset(
   result: ConsolidationResult,
+  carries: HistoricalCarryRecord[] = [],
+  tpcResolution?: TpcResolution,
 ): PublicDataset {
   if (!result.canExport)
     throw new Error(
       "Employee publication is blocked until every review control passes.",
     );
-  return {
-    month: result.month,
-    projects: result.projects.map((project) => ({
+  const projects = new Map<string, PublicProject>();
+  for (const project of result.projects) {
+    const key = project.code ?? `uncoded:${project.description}`;
+    projects.set(key, {
       code: project.code,
       description: project.description,
       contributors: result.employees
         .filter((employee) => (project.hoursByEmployee[employee.id] ?? 0) > 0)
         .map((employee) => ({
           employee: employee.fullName,
+          department: employee.department,
           hours: project.hoursByEmployee[employee.id],
         })),
+      carriedHours: [],
+      outstandingTpcs: [],
       total: project.total,
+    });
+  }
+  for (const carry of carries) {
+    if (!carry.projectCode) continue;
+    const project = projects.get(carry.projectCode) ?? {
+      code: carry.projectCode,
+      description:
+        carry.projectDescription ?? "Project description not recorded",
+      contributors: [],
+      carriedHours: [],
+      outstandingTpcs: [],
+      total: 0,
+    };
+    project.carriedHours.push({
+      employee: carry.employee,
+      department: carry.department,
+      originatingMonth: carry.originatingMonth,
+      hours: carry.hours,
+    });
+    projects.set(carry.projectCode, project);
+  }
+  const publicTpc = (record: TpcResolution["records"][number]): PublicTpc => ({
+    originatingDate: record.originatingDate,
+    originatingMonth: record.originatingMonth,
+    supplier: record.supplier,
+    description: record.description,
+    projectNumberRaw: record.projectNumberRaw,
+    net: record.net,
+    vat: record.vat,
+    gross: record.gross,
+  });
+  for (const record of tpcResolution?.allocated ?? []) {
+    if (!record.projectCode) continue;
+    const project = projects.get(record.projectCode) ?? {
+      code: record.projectCode,
+      description:
+        record.projectDescription ?? "Project description not recorded",
+      contributors: [],
+      carriedHours: [],
+      outstandingTpcs: [],
+      total: 0,
+    };
+    project.outstandingTpcs.push(publicTpc(record));
+    projects.set(record.projectCode, project);
+  }
+  return {
+    month: result.month,
+    employees: result.employees.map((employee) => ({
+      employee: employee.fullName,
+      department: employee.department,
     })),
+    projects: [...projects.values()],
     statuses: result.employees.flatMap((employee) => {
       const unknown = result.unknownHoursByEmployee[employee.id] ?? 0;
       const excluded = result.excludedHoursByEmployee[employee.id] ?? 0;
@@ -125,6 +238,7 @@ export function createEmployeeDataset(
                 employee: employee.fullName,
                 kind: "unknown-project" as const,
                 hours: unknown,
+                originatingMonth: result.month,
               },
             ]
           : []),
@@ -134,11 +248,24 @@ export function createEmployeeDataset(
                 employee: employee.fullName,
                 kind: "excluded" as const,
                 hours: excluded,
+                originatingMonth: result.month,
               },
             ]
           : []),
+        ...carries
+          .filter(
+            (carry) => !carry.projectCode && carry.employeeId === employee.id,
+          )
+          .map((carry) => ({
+            employee: employee.fullName,
+            kind: "unknown-project" as const,
+            hours: carry.hours,
+            originatingMonth: carry.originatingMonth,
+          })),
       ];
     }),
+    tpcLoaded: tpcResolution?.loaded ?? false,
+    unallocatedTpcs: (tpcResolution?.unallocated ?? []).map(publicTpc),
   };
 }
 

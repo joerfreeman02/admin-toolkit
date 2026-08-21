@@ -12,7 +12,7 @@ pnpm build
 pnpm audit --prod
 ```
 
-Vitest covers parsing, exact reconciliation, Employee Register controls, publication privacy and workbook generation. NEXUS 1.0A.3.2 additionally covers advisory one-click Time in Lieu without a fabricated code, private-only Time in Lieu outputs, stable review progress, distinct collapsed Current/Previous FY carry queues, Current FY Unknown Project carry authority, closed-FY Already Dealt With and Unknown Project carry, persistence, human-readable dates and wording regression.
+Vitest covers parsing, exact reconciliation, Employee Register controls, publication privacy and workbook generation. NEXUS 1.0B additionally covers rendered Current/Previous FY carry actions and persistence; TPC financial-year chronology, red/black status, newest-copy authority, project/unallocated review decisions, messy monetary values and publication privacy; plus desktop/mobile Employee Viewer carry, TPC and department-filtering behaviour.
 
 Playwright runs the full scenario set on desktop and mobile. It covers persistent/replaced Job Registers, compact indexed search without a large dropdown, advisory one-click resolutions, safe source download, bounded surrounding-row context, plain report/publication wording, Unknown/Excluded completion, separate persistent historical review, April rollover, encrypted publication and responsive UI.
 
