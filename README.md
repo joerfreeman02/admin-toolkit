@@ -6,7 +6,7 @@ NEXUS brings monthly timesheets, carried hours, project information and outstand
 
 ## Status and versions
 
-- Production release: product `NEXUS 1.0.0`, module `TIME 1.0.0`.
+- Production release: product `NEXUS 1.0.1`, module `TIME 1.0.0`.
 - Starting pre-sprint candidate: `ADMIN-0.2.0 / TIME-0.2.0` at `def244ccbfcc1e688296f29f2469eba5a453c2c7`.
 - Last accepted recovery baseline: tag `sprint-0-admin-0.1.1-time-0.1.1` at `5b99054ea78bdfc77369c7215bb0cf7530a6c8f4` (merged main baseline `d575ab58957aedf15b68f780ebe5bdddb84f0175`).
 - Build identity comes from `GITHUB_SHA`, falling back to `local-dev`.
@@ -17,6 +17,10 @@ NEXUS brings monthly timesheets, carried hours, project information and outstand
 2. **Review anything NEXUS couldn't identify** one item at a time. Suggested project/internal matches, **Use Time in Lieu**, **Leave as Unknown Project**, **Exclude these hours** and **Treat as former employee** save and advance in one deliberate click. Progress retains the original session total while separately showing the unresolved count. **Skip for now** advances without resolving the item.
 3. **Create monthly reports** for project and protected internal hours.
 4. **Publish employee viewer** only after deliberate approval.
+
+### Employee Viewer publication deployment
+
+Publishing creates a short URL such as `https://joerfreeman02.github.io/admin-toolkit/#employee-viewer=2026-08-<random-id>` and a separately downloadable encrypted `.easpub` asset. The access code is not included in either. Before sending the URL, add the downloaded asset to `public/publications/` with its generated filename, commit and deploy it through the normal GitHub Pages workflow, then verify the URL in a clean browser using the access code. Publishing a later month adds a new asset; it does not replace or invalidate earlier ones. Do not commit access codes or source data.
 
 The Current FY workbook is replaced after each valid upload and retained on the workstation. Earlier April-to-March workbooks can be retained as read-only history. NEXUS processes recognised month sheets chronologically. Green `#92D050` starts or continues carry into the next month; a later orange/grey state closes it, and absence or a non-green next-month state expires it. Historic green cells never remain live indefinitely. Historical employees are identified from their source abbreviation and described using their latest/current registered assignment. The Employee Register never creates attendance or hours absent from the source workbook.
 

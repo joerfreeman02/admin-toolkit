@@ -12,9 +12,15 @@ import {
   createEmployeeDataset,
   decodePublicationFragment,
   decryptEmployeePublication,
+  employeeViewerUrl,
   encodePublicationFragment,
   encryptEmployeeDataset,
+  generateEmployeePublicationId,
   generateEmployeeViewerToken,
+  loadPublishedEmployeePublication,
+  parseEmployeeViewerLink,
+  publicationAssetPath,
+  publicationFilename,
 } from "../src/publication";
 
 beforeAll(() => {
@@ -84,6 +90,84 @@ describe("encrypted Employee Viewer publication", () => {
     );
     expect(fragment).not.toMatch(/Employee Alpha|Harbour Road|2\.25/);
     expect(decodePublicationFragment(fragment)).toEqual(publication);
+    expect(parseEmployeeViewerLink(fragment)).toEqual({
+      kind: "legacy",
+      publication,
+    });
+  });
+
+  it("creates short, secure, independent publication IDs, paths and URLs", () => {
+    const august = generateEmployeePublicationId("2026-08");
+    const secondAugust = generateEmployeePublicationId("2026-08");
+    const september = generateEmployeePublicationId("2026-09");
+    const url = employeeViewerUrl(
+      august,
+      "https://joerfreeman02.github.io/admin-toolkit/",
+    );
+
+    expect(august).toMatch(/^2026-08-[A-Za-z0-9_-]{16}$/);
+    expect(secondAugust).not.toBe(august);
+    expect(publicationFilename(august)).toBe(`${august}.easpub`);
+    expect(publicationAssetPath(august)).toBe(`publications/${august}.easpub`);
+    expect(publicationAssetPath(september)).not.toBe(
+      publicationAssetPath(august),
+    );
+    expect(url).toBe(
+      `https://joerfreeman02.github.io/admin-toolkit/#employee-viewer=${august}`,
+    );
+    expect(url.length).toBeLessThan(250);
+    expect(url).not.toMatch(/Employee Alpha|Harbour Road/);
+  });
+
+  it("loads and validates a deployed encrypted publication asset", async () => {
+    const dataset = createEmployeeDataset(
+      consolidateEntries([entry()], register(), "2026-07"),
+    );
+    const token = generateEmployeeViewerToken();
+    const publication = await encryptEmployeeDataset(dataset, token);
+    const id = generateEmployeePublicationId("2026-07");
+    const fetcher: typeof fetch = async (input) => {
+      expect(String(input)).toBe(
+        `https://example.test/admin-toolkit/publications/${id}.easpub`,
+      );
+      return new Response(JSON.stringify(publication), { status: 200 });
+    };
+
+    const loaded = await loadPublishedEmployeePublication(
+      id,
+      fetcher,
+      "https://example.test/admin-toolkit/",
+    );
+    await expect(decryptEmployeePublication(loaded, token)).resolves.toEqual(
+      dataset,
+    );
+    await expect(
+      decryptEmployeePublication(loaded, generateEmployeeViewerToken()),
+    ).rejects.toThrow(/incorrect|damaged/);
+  });
+
+  it("fails closed for missing or corrupt deployed publications and malformed links", async () => {
+    const id = generateEmployeePublicationId("2026-07");
+    await expect(
+      loadPublishedEmployeePublication(
+        id,
+        async () => new Response("not found", { status: 404 }),
+        "https://example.test/admin-toolkit/",
+      ),
+    ).rejects.toThrow("could not be found");
+    await expect(
+      loadPublishedEmployeePublication(
+        id,
+        async () => new Response("{corrupt", { status: 200 }),
+        "https://example.test/admin-toolkit/",
+      ),
+    ).rejects.toThrow("could not be opened");
+    expect(parseEmployeeViewerLink("#employee-viewer=truncated")).toEqual({
+      kind: "invalid",
+    });
+    expect(parseEmployeeViewerLink("#employee-viewer-demo")).toEqual({
+      kind: "demo",
+    });
   });
 
   it("publishes neutral Unknown and Excluded totals without protected source wording", () => {

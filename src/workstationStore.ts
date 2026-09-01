@@ -13,6 +13,11 @@ const FINANCIAL_YEAR_STORE = "financial-year-workbooks";
 const JOB_REGISTER_STORE = "job-register";
 const TPC_FINANCIAL_YEAR_STORE = "tpc-financial-year-workbooks";
 
+export interface StoredEncryptedPublication {
+  id: string;
+  publication: EncryptedEmployeePublication;
+}
+
 function openDatabase() {
   return new Promise<IDBDatabase>((resolve, reject) => {
     const request = indexedDB.open(DATABASE_NAME, DATABASE_VERSION);
@@ -117,17 +122,20 @@ async function requestValue<T>(
 
 export function saveEncryptedPublication(
   publication: EncryptedEmployeePublication,
+  publicationId = publication.month,
 ) {
   return requestValue<IDBValidKey>(PUBLICATION_STORE, "readwrite", (store) =>
-    store.put(publication, publication.month),
+    store.put({ id: publicationId, publication }, publicationId),
   );
 }
 
-export function listEncryptedPublications() {
-  return requestValue<EncryptedEmployeePublication[]>(
-    PUBLICATION_STORE,
-    "readonly",
-    (store) => store.getAll(),
+export async function listEncryptedPublications() {
+  const items = await requestValue<
+    Array<StoredEncryptedPublication | EncryptedEmployeePublication>
+  >(PUBLICATION_STORE, "readonly", (store) => store.getAll());
+  // Records saved before persistent publication IDs were introduced remain usable.
+  return items.map((item) =>
+    "publication" in item ? item : { id: item.month, publication: item },
   );
 }
 

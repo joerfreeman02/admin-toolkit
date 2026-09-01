@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { Buffer } from "node:buffer";
 import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
@@ -14,6 +14,26 @@ const realCarryFixturePaths = {
 const realCarryFixturesAvailable = Object.values(realCarryFixturePaths).every(
   Boolean,
 );
+
+async function deployDownloadedPublication(page: Page) {
+  const downloadPromise = page.waitForEvent("download");
+  await page
+    .getByRole("button", {
+      name: "Download deployment-ready encrypted publication",
+    })
+    .click();
+  const download = await downloadPromise;
+  const downloadedPath = await download.path();
+  if (!downloadedPath) throw new Error("Publication download was unavailable.");
+  const publication = await readFile(downloadedPath, "utf8");
+  await page.route("**/publications/*.easpub", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: publication,
+    }),
+  );
+}
 
 function syntheticTimesheet(
   description: string,
@@ -677,7 +697,7 @@ test("landing, public viewer and production build information are available", as
   await expect(unallocated).not.toHaveAttribute("open", "");
   await unallocated.getByText("Show unallocated TPCs").click();
   await expect(page.getByText(/tell the Office Manager/)).toBeVisible();
-  await page.getByRole("button", { name: /NEXUS 1.0.0/ }).click();
+  await page.getByRole("button", { name: /NEXUS 1.0.1/ }).click();
   await expect(page.getByText("Build information")).toBeVisible();
   await expect(page.getByText("TIME 1.0.0", { exact: true })).toBeVisible();
 });
@@ -1427,6 +1447,7 @@ test("Previous FY Unknown carry clears the softlock and remains visible as Unkno
   const link = await page
     .getByLabel("Encrypted employee-view link")
     .inputValue();
+  await deployDownloadedPublication(page);
   await page.goto(link);
   await page.getByLabel("Employee Viewer token").fill(token);
   await page.getByRole("button", { name: "Open approved month" }).click();
@@ -1478,6 +1499,7 @@ test("Employee Viewer excludes closed and expired carry lifecycles while retaini
   const link = await page
     .getByLabel("Encrypted employee-view link")
     .inputValue();
+  await deployDownloadedPublication(page);
   await page.goto(link);
   await page.getByLabel("Employee Viewer token").fill(token);
   await page.getByRole("button", { name: "Open approved month" }).click();
@@ -1769,6 +1791,7 @@ test("TPC workbook persists, reviews one item at a time, and publishes only outs
   const link = await page
     .getByLabel("Encrypted employee-view link")
     .inputValue();
+  await deployDownloadedPublication(page);
   await page.goto(link);
   await page.getByLabel("Employee Viewer token").fill(token);
   await page.getByRole("button", { name: "Open approved month" }).click();
@@ -1814,6 +1837,8 @@ test("encrypted employee publication rejects the wrong token and opens with the 
   expect(link).toContain("#employee-viewer=");
   expect(link).not.toContain("Employee Alpha");
   expect(link).not.toContain("Synthetic Project");
+  expect(link.length).toBeLessThan(250);
+  await deployDownloadedPublication(page);
 
   await page.goto(link);
   await page.getByLabel("Employee Viewer token").fill("wrong-token");
@@ -1883,6 +1908,29 @@ test("keyboard activation reaches the synthetic public viewer", async ({
   });
   await viewerButton.focus();
   await page.keyboard.press("Enter");
+  await expect(page.getByText("Employee Viewer demonstration")).toBeVisible();
+});
+
+test("missing and corrupt Employee Viewer assets fail closed while the demo route remains intentional", async ({
+  page,
+}) => {
+  const id = "2026-08-X7k3mP9q";
+  await page.route("**/publications/*.easpub", (route) =>
+    route.fulfill({ status: 404, body: "Not found" }),
+  );
+  await page.goto(`./#employee-viewer=${id}`);
+  await expect(page.getByRole("alert")).toContainText("could not be found");
+  await expect(page.getByText("Employee Viewer demonstration")).toHaveCount(0);
+
+  await page.unroute("**/publications/*.easpub");
+  await page.route("**/publications/*.easpub", (route) =>
+    route.fulfill({ status: 200, body: "{corrupt" }),
+  );
+  await page.reload();
+  await expect(page.getByRole("alert")).toContainText("could not be opened");
+  await expect(page.getByText("Employee Viewer demonstration")).toHaveCount(0);
+
+  await page.goto("./#employee-viewer-demo");
   await expect(page.getByText("Employee Viewer demonstration")).toBeVisible();
 });
 

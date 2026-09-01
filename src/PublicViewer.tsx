@@ -7,13 +7,15 @@ import type {
 } from "./domain";
 import {
   EMPLOYEE_VIEWER_TOKEN_KEY,
-  decodePublicationFragment,
   decryptEmployeePublication,
+  loadPublishedEmployeePublication,
+  parseEmployeeViewerLink,
   parsePublicationFile,
 } from "./publication";
 import {
   listEncryptedPublications,
   saveEncryptedPublication,
+  type StoredEncryptedPublication,
 } from "./workstationStore";
 
 function DatasetViewer({
@@ -328,8 +330,10 @@ function ProjectDetail({
 export function PublicViewer() {
   const [publication, setPublication] =
     useState<EncryptedEmployeePublication>();
-  const [library, setLibrary] = useState<EncryptedEmployeePublication[]>([]);
+  const [publicationId, setPublicationId] = useState<string>();
+  const [library, setLibrary] = useState<StoredEncryptedPublication[]>([]);
   const [dataset, setDataset] = useState<PublicDataset>();
+  const [demo, setDemo] = useState(false);
   const [token, setToken] = useState(
     () => localStorage.getItem(EMPLOYEE_VIEWER_TOKEN_KEY) ?? "",
   );
@@ -340,26 +344,51 @@ export function PublicViewer() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    function loadFromLink() {
+    let current = true;
+    async function loadFromLink() {
+      const link = parseEmployeeViewerLink(location.hash);
+      setDataset(undefined);
+      setPublication(undefined);
+      setPublicationId(undefined);
+      setDemo(link.kind === "demo" || link.kind === "none");
+      setError("");
+      if (link.kind === "legacy") {
+        setPublication(link.publication);
+        return;
+      }
+      if (link.kind === "invalid") {
+        setError("This Employee Viewer link is invalid or incomplete.");
+        return;
+      }
+      if (link.kind !== "publication") return;
+      setPublicationId(link.publicationId);
       try {
-        const fromLink = decodePublicationFragment(location.hash);
-        if (fromLink) {
-          setPublication(fromLink);
-          setDataset(undefined);
-          setError("");
-        }
-      } catch {
-        setError("This employee-view link is invalid or incomplete.");
+        const next = await loadPublishedEmployeePublication(link.publicationId);
+        if (current) setPublication(next);
+      } catch (cause) {
+        if (!current) return;
+        setError(
+          cause instanceof Error
+            ? cause.message
+            : "The encrypted publication could not be opened.",
+        );
       }
     }
-    loadFromLink();
+    void loadFromLink();
     window.addEventListener("hashchange", loadFromLink);
     listEncryptedPublications()
       .then((items) =>
-        setLibrary(items.sort((a, b) => b.month.localeCompare(a.month))),
+        setLibrary(
+          items.sort((a, b) =>
+            b.publication.month.localeCompare(a.publication.month),
+          ),
+        ),
       )
       .catch(() => undefined);
-    return () => window.removeEventListener("hashchange", loadFromLink);
+    return () => {
+      current = false;
+      window.removeEventListener("hashchange", loadFromLink);
+    };
   }, []);
 
   async function unlock() {
@@ -369,10 +398,12 @@ export function PublicViewer() {
     try {
       const next = await decryptEmployeePublication(publication, token);
       setDataset(next);
-      await saveEncryptedPublication(publication);
+      await saveEncryptedPublication(publication, publicationId);
       setLibrary((current) => [
-        publication,
-        ...current.filter((item) => item.month !== publication.month),
+        { id: publicationId ?? publication.month, publication },
+        ...current.filter(
+          (item) => item.id !== (publicationId ?? publication.month),
+        ),
       ]);
       if (remember) localStorage.setItem(EMPLOYEE_VIEWER_TOKEN_KEY, token);
       else localStorage.removeItem(EMPLOYEE_VIEWER_TOKEN_KEY);
@@ -391,14 +422,16 @@ export function PublicViewer() {
     if (!file) return;
     try {
       setPublication(parsePublicationFile(await file.text()));
+      setPublicationId(undefined);
       setDataset(undefined);
+      setDemo(false);
       setError("");
     } catch {
       setError("The selected encrypted publication file is invalid.");
     }
   }
 
-  const shownDataset = dataset ?? (!publication ? demoData[0] : undefined);
+  const shownDataset = dataset ?? (demo ? demoData[0] : undefined);
   return (
     <section className="panel" aria-labelledby="viewer-title">
       {publication && !dataset && (
@@ -445,6 +478,11 @@ export function PublicViewer() {
       {shownDataset && (
         <DatasetViewer dataset={shownDataset} encrypted={!!dataset} />
       )}
+      {!publication && !shownDataset && error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
       <details className="viewer-library">
         <summary>Previously opened months or encrypted file</summary>
         {!!library.length && (
@@ -454,18 +492,21 @@ export function PublicViewer() {
               value=""
               onChange={(event) => {
                 const selected = library.find(
-                  (item) => item.month === event.target.value,
+                  (item) => item.id === event.target.value,
                 );
                 if (selected) {
-                  setPublication(selected);
+                  setPublication(selected.publication);
+                  setPublicationId(selected.id);
                   setDataset(undefined);
+                  setDemo(false);
+                  setError("");
                 }
               }}
             >
               <option value="">Choose a month</option>
               {library.map((item) => (
-                <option key={item.month} value={item.month}>
-                  {item.month}
+                <option key={item.id} value={item.id}>
+                  {item.publication.month}
                 </option>
               ))}
             </select>

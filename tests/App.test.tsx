@@ -19,6 +19,23 @@ it("shows the demonstration public viewer without internal categories", () => {
   expect(screen.getByText("Outstanding Third Party Costs")).toBeVisible();
 });
 
+it("fails closed for a malformed Employee Viewer link instead of showing demo data", async () => {
+  location.hash = "#employee-viewer=truncated";
+  render(<App />);
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "This Employee Viewer link is invalid or incomplete.",
+  );
+  expect(
+    screen.queryByText("Employee Viewer demonstration"),
+  ).not.toBeInTheDocument();
+});
+
+it("keeps the fictional data on the explicit demo route only", () => {
+  location.hash = "#employee-viewer-demo";
+  render(<App />);
+  expect(screen.getByText("Employee Viewer demonstration")).toBeVisible();
+});
+
 it("redirects admin navigation to the workstation gate", () => {
   render(<App />);
   fireEvent.click(screen.getByRole("button", { name: "Admin Processing" }));
@@ -77,9 +94,9 @@ it("shows permanent creator attribution and the approved portrait alternative te
   expect(screen.getByText("Created by Joe Freeman · EAS FORGE")).toBeVisible();
 });
 
-it("shows NEXUS 1.0.0 production version and build information", () => {
+it("shows NEXUS 1.0.1 production version and build information", () => {
   render(<App />);
-  fireEvent.click(screen.getByRole("button", { name: /NEXUS 1.0.0/ }));
+  fireEvent.click(screen.getByRole("button", { name: /NEXUS 1.0.1/ }));
   expect(screen.getByText("TIME 1.0.0")).toBeVisible();
-  expect(screen.getByText("Production 1.0.0")).toBeVisible();
+  expect(screen.getByText("Production 1.0.1")).toBeVisible();
 });

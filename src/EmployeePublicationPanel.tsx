@@ -8,21 +8,24 @@ import type {
 import {
   EMPLOYEE_VIEWER_TOKEN_KEY,
   createEmployeeDataset,
-  encodePublicationFragment,
+  employeeViewerUrl,
   encryptEmployeeDataset,
+  generateEmployeePublicationId,
   generateEmployeeViewerToken,
+  publicationAssetPath,
+  publicationFilename,
 } from "./publication";
 
 function downloadPublication(
   publication: EncryptedEmployeePublication,
-  month: string,
+  publicationId: string,
 ) {
   const url = URL.createObjectURL(
     new Blob([JSON.stringify(publication)], { type: "application/json" }),
   );
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = `EAS Employee Hours - ${month}.easpub`;
+  anchor.download = publicationFilename(publicationId);
   anchor.click();
   URL.revokeObjectURL(url);
 }
@@ -48,6 +51,7 @@ export function EmployeePublicationPanel({
   const [confirmed, setConfirmed] = useState(false);
   const [publication, setPublication] =
     useState<EncryptedEmployeePublication>();
+  const [publicationId, setPublicationId] = useState("");
   const [link, setLink] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -55,6 +59,7 @@ export function EmployeePublicationPanel({
   useEffect(() => {
     setConfirmed(false);
     setPublication(undefined);
+    setPublicationId("");
     setLink("");
   }, [result.month]);
 
@@ -63,6 +68,7 @@ export function EmployeePublicationPanel({
     setConfiguredToken(token);
     setGeneratedToken(token);
     setPublication(undefined);
+    setPublicationId("");
     setLink("");
     setMessage(
       "A new employee access code is ready. Save it somewhere secure.",
@@ -97,11 +103,17 @@ export function EmployeePublicationPanel({
         createEmployeeDataset(result, carries, tpcResolution),
         configuredToken,
       );
-      const fragment = encodePublicationFragment(next);
-      const nextLink = `${location.origin}${location.pathname}${fragment}`;
+      const nextPublicationId = generateEmployeePublicationId(result.month);
+      const nextLink = employeeViewerUrl(
+        nextPublicationId,
+        `${location.origin}${location.pathname}`,
+      );
       setPublication(next);
+      setPublicationId(nextPublicationId);
       setLink(nextLink);
-      setMessage("The Employee Viewer is ready to share for this month.");
+      setMessage(
+        "The short link and encrypted publication asset are ready. The link is not live until the downloaded asset is deployed and checked.",
+      );
     } catch (cause) {
       setMessage(
         cause instanceof Error ? cause.message : "Publication failed.",
@@ -174,9 +186,20 @@ export function EmployeePublicationPanel({
       {link && publication && (
         <div className="publication-output">
           <label>
-            Encrypted employee-view link
-            <textarea readOnly value={link} rows={4} />
+            Short employee-view link (do not send until deployed)
+            <textarea
+              aria-label="Encrypted employee-view link"
+              readOnly
+              value={link}
+              rows={2}
+            />
           </label>
+          <p className="notice">
+            Download <code>{publicationFilename(publicationId)}</code>, add it
+            to <code>public/{publicationAssetPath(publicationId)}</code>, deploy
+            GitHub Pages, then open this link in a clean browser with the access
+            code before sending it to employees.
+          </p>
           <div className="button-row">
             <button
               type="button"
@@ -186,9 +209,9 @@ export function EmployeePublicationPanel({
             </button>
             <button
               type="button"
-              onClick={() => downloadPublication(publication, result.month)}
+              onClick={() => downloadPublication(publication, publicationId)}
             >
-              Download encrypted publication file
+              Download deployment-ready encrypted publication
             </button>
           </div>
         </div>
