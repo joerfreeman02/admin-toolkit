@@ -94,9 +94,9 @@ it("shows permanent creator attribution and the approved portrait alternative te
   expect(screen.getByText("Created by Joe Freeman · EAS FORGE")).toBeVisible();
 });
 
-it("shows NEXUS 1.0.1 production version and build information", () => {
+it("shows NEXUS 1.0.2 production version and build information", () => {
   render(<App />);
-  fireEvent.click(screen.getByRole("button", { name: /NEXUS 1.0.1/ }));
+  fireEvent.click(screen.getByRole("button", { name: /NEXUS 1.0.2/ }));
   expect(screen.getByText("TIME 1.0.0")).toBeVisible();
-  expect(screen.getByText("Production 1.0.1")).toBeVisible();
+  expect(screen.getByText("Production 1.0.2")).toBeVisible();
 });

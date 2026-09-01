@@ -1,6 +1,6 @@
 {
   "name": "eas-admin-toolkit",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "type": "module",
   "scripts": {
@@ -12,7 +12,9 @@
     "typecheck": "tsc -b --pretty false",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "worker:build": "tsc -p worker/tsconfig.json",
+    "worker:test": "vitest run tests/worker.test.ts"
   },
   "dependencies": {
     "exceljs": "4.4.0",

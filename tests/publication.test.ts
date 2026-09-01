@@ -8,6 +8,11 @@ import {
 import type { EmployeeRegister, TimeEntry } from "../src/domain";
 import { addEmployee, emptyEmployeeRegister } from "../src/employeeRegister";
 import {
+  forgetRememberedEmployeeViewerTokens,
+  loadRememberedEmployeeViewerTokens,
+  rememberEmployeeViewerToken,
+} from "../src/employeeViewerAccess";
+import {
   EMPLOYEE_VIEWER_TOKEN_KEY,
   createEmployeeDataset,
   decodePublicationFragment,
@@ -19,7 +24,6 @@ import {
   generateEmployeeViewerToken,
   loadPublishedEmployeePublication,
   parseEmployeeViewerLink,
-  publicationAssetPath,
   publicationFilename,
 } from "../src/publication";
 
@@ -105,12 +109,11 @@ describe("encrypted Employee Viewer publication", () => {
       "https://joerfreeman02.github.io/admin-toolkit/",
     );
 
-    expect(august).toMatch(/^2026-08-[A-Za-z0-9_-]{16}$/);
+    expect(august).toMatch(/^2026-08-[A-Za-z0-9_-]{22}$/);
     expect(secondAugust).not.toBe(august);
     expect(publicationFilename(august)).toBe(`${august}.easpub`);
-    expect(publicationAssetPath(august)).toBe(`publications/${august}.easpub`);
-    expect(publicationAssetPath(september)).not.toBe(
-      publicationAssetPath(august),
+    expect(publicationFilename(september)).not.toBe(
+      publicationFilename(august),
     );
     expect(url).toBe(
       `https://joerfreeman02.github.io/admin-toolkit/#employee-viewer=${august}`,
@@ -127,16 +130,14 @@ describe("encrypted Employee Viewer publication", () => {
     const publication = await encryptEmployeeDataset(dataset, token);
     const id = generateEmployeePublicationId("2026-07");
     const fetcher: typeof fetch = async (input) => {
-      expect(String(input)).toBe(
-        `https://example.test/admin-toolkit/publications/${id}.easpub`,
-      );
+      expect(String(input)).toBe(`https://example.test/v1/publications/${id}`);
       return new Response(JSON.stringify(publication), { status: 200 });
     };
 
     const loaded = await loadPublishedEmployeePublication(
       id,
       fetcher,
-      "https://example.test/admin-toolkit/",
+      "https://example.test/",
     );
     await expect(decryptEmployeePublication(loaded, token)).resolves.toEqual(
       dataset,
@@ -152,14 +153,14 @@ describe("encrypted Employee Viewer publication", () => {
       loadPublishedEmployeePublication(
         id,
         async () => new Response("not found", { status: 404 }),
-        "https://example.test/admin-toolkit/",
+        "https://example.test/",
       ),
     ).rejects.toThrow("could not be found");
     await expect(
       loadPublishedEmployeePublication(
         id,
         async () => new Response("{corrupt", { status: 200 }),
-        "https://example.test/admin-toolkit/",
+        "https://example.test/",
       ),
     ).rejects.toThrow("could not be opened");
     expect(parseEmployeeViewerLink("#employee-viewer=truncated")).toEqual({
@@ -168,6 +169,23 @@ describe("encrypted Employee Viewer publication", () => {
     expect(parseEmployeeViewerLink("#employee-viewer-demo")).toEqual({
       kind: "demo",
     });
+  });
+
+  it("migrates and retains a keyring of remembered legacy access codes", () => {
+    const storage = new Map<string, string>();
+    const adapter = {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => void storage.set(key, value),
+      removeItem: (key: string) => void storage.delete(key),
+    } as Storage;
+    storage.set(EMPLOYEE_VIEWER_TOKEN_KEY, "old-code");
+    expect(loadRememberedEmployeeViewerTokens(adapter)).toEqual(["old-code"]);
+    expect(rememberEmployeeViewerToken("current-code", adapter)).toEqual([
+      "current-code",
+      "old-code",
+    ]);
+    forgetRememberedEmployeeViewerTokens(adapter);
+    expect(loadRememberedEmployeeViewerTokens(adapter)).toEqual([]);
   });
 
   it("publishes neutral Unknown and Excluded totals without protected source wording", () => {

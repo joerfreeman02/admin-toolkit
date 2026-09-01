@@ -81,6 +81,7 @@ interface Props {
   logout: () => void;
   register: EmployeeRegister;
   onRegisterChange: (register: EmployeeRegister) => void;
+  adminCode?: string;
 }
 
 type CurrentReviewItem =
@@ -276,7 +277,12 @@ function DescriptionConflictReview({
   );
 }
 
-export function AdminProcessing({ logout, register, onRegisterChange }: Props) {
+export function AdminProcessing({
+  logout,
+  register,
+  onRegisterChange,
+  adminCode,
+}: Props) {
   const [month, setMonth] = useState("2026-07");
   const [files, setFiles] = useState<File[]>([]);
   const [workbooks, setWorkbooks] = useState<StoredFinancialYearWorkbook[]>([]);
@@ -1294,6 +1300,7 @@ export function AdminProcessing({ logout, register, onRegisterChange }: Props) {
                 blocked={result.fatalErrors.length > 0}
                 carries={carryResolution.records}
                 tpcResolution={tpcResolution}
+                adminCode={adminCode}
               />
             </div>
           </section>

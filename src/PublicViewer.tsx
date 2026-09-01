@@ -6,12 +6,16 @@ import type {
   PublicProject,
 } from "./domain";
 import {
-  EMPLOYEE_VIEWER_TOKEN_KEY,
   decryptEmployeePublication,
-  loadPublishedEmployeePublication,
   parseEmployeeViewerLink,
   parsePublicationFile,
 } from "./publication";
+import {
+  forgetRememberedEmployeeViewerTokens,
+  loadRememberedEmployeeViewerTokens,
+  rememberEmployeeViewerToken,
+} from "./employeeViewerAccess";
+import { fetchPublishedEmployeePublication } from "./publicationApi";
 import {
   listEncryptedPublications,
   saveEncryptedPublication,
@@ -334,12 +338,11 @@ export function PublicViewer() {
   const [library, setLibrary] = useState<StoredEncryptedPublication[]>([]);
   const [dataset, setDataset] = useState<PublicDataset>();
   const [demo, setDemo] = useState(false);
-  const [token, setToken] = useState(
-    () => localStorage.getItem(EMPLOYEE_VIEWER_TOKEN_KEY) ?? "",
+  const [token, setToken] = useState("");
+  const [rememberedTokens, setRememberedTokens] = useState(() =>
+    loadRememberedEmployeeViewerTokens(),
   );
-  const [remember, setRemember] = useState(
-    () => !!localStorage.getItem(EMPLOYEE_VIEWER_TOKEN_KEY),
-  );
+  const [remember, setRemember] = useState(() => rememberedTokens.length > 0);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -363,7 +366,9 @@ export function PublicViewer() {
       if (link.kind !== "publication") return;
       setPublicationId(link.publicationId);
       try {
-        const next = await loadPublishedEmployeePublication(link.publicationId);
+        const next = await fetchPublishedEmployeePublication(
+          link.publicationId,
+        );
         if (current) setPublication(next);
       } catch (cause) {
         if (!current) return;
@@ -391,6 +396,32 @@ export function PublicViewer() {
     };
   }, []);
 
+  useEffect(() => {
+    let current = true;
+    async function unlockWithRememberedToken() {
+      if (!publication || dataset || !rememberedTokens.length) return;
+      setBusy(true);
+      for (const candidate of rememberedTokens) {
+        try {
+          const next = await decryptEmployeePublication(publication, candidate);
+          if (!current) return;
+          setToken(candidate);
+          setDataset(next);
+          await saveEncryptedPublication(publication, publicationId);
+          if (current) setBusy(false);
+          return;
+        } catch {
+          // A keyring can contain a code for another historic publication.
+        }
+      }
+      if (current) setBusy(false);
+    }
+    void unlockWithRememberedToken();
+    return () => {
+      current = false;
+    };
+  }, [dataset, publication, publicationId, rememberedTokens]);
+
   async function unlock() {
     if (!publication) return;
     setBusy(true);
@@ -405,8 +436,7 @@ export function PublicViewer() {
           (item) => item.id !== (publicationId ?? publication.month),
         ),
       ]);
-      if (remember) localStorage.setItem(EMPLOYEE_VIEWER_TOKEN_KEY, token);
-      else localStorage.removeItem(EMPLOYEE_VIEWER_TOKEN_KEY);
+      if (remember) setRememberedTokens(rememberEmployeeViewerToken(token));
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -460,6 +490,18 @@ export function PublicViewer() {
             />
             Remember this workstation
           </label>
+          {!!rememberedTokens.length && (
+            <button
+              type="button"
+              onClick={() => {
+                forgetRememberedEmployeeViewerTokens();
+                setRememberedTokens([]);
+                setRemember(false);
+              }}
+            >
+              Forget remembered Employee Viewer access codes
+            </button>
+          )}
           {error && (
             <p className="error" role="alert">
               {error}

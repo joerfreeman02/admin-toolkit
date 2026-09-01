@@ -31,7 +31,7 @@ async function sha256(value: string) {
     .join("");
 }
 
-function AdminGate({ onAuthorise }: { onAuthorise: () => void }) {
+function AdminGate({ onAuthorise }: { onAuthorise: (code: string) => void }) {
   const [token, setToken] = useState("");
   const [error, setError] = useState("");
   async function submit(event: React.FormEvent) {
@@ -48,7 +48,7 @@ function AdminGate({ onAuthorise }: { onAuthorise: () => void }) {
       return;
     }
     localStorage.setItem(AUTH_KEY, "true");
-    onAuthorise();
+    onAuthorise(token);
   }
   return (
     <section className="panel gate">
@@ -128,6 +128,7 @@ export default function App() {
   const [authorised, setAuthorised] = useState(
     localStorage.getItem(AUTH_KEY) === "true",
   );
+  const [adminCode, setAdminCode] = useState("");
   const [register, setRegister] = useState<EmployeeRegister>(() =>
     loadEmployeeRegister(),
   );
@@ -175,7 +176,7 @@ export default function App() {
       <main>
         {view === "home" && (
           <section className="hero">
-            <p className="eyebrow">NEXUS 1.0.1</p>
+            <p className="eyebrow">NEXUS 1.0.2</p>
             <h1>Monthly timesheets turned into clear, ready-to-use reports.</h1>
             <p>
               NEXUS checks the month&apos;s timesheets, helps with anything it
@@ -205,9 +206,15 @@ export default function App() {
               logout={logout}
               register={register}
               onRegisterChange={setRegister}
+              adminCode={adminCode || undefined}
             />
           ) : (
-            <AdminGate onAuthorise={() => setAuthorised(true)} />
+            <AdminGate
+              onAuthorise={(code) => {
+                setAdminCode(code);
+                setAuthorised(true);
+              }}
+            />
           ))}
         {view === "about" && <About />}
         {view === "diagnostics" && (
@@ -215,20 +222,20 @@ export default function App() {
             <h2>Build information</h2>
             <dl>
               <dt>Product</dt>
-              <dd>NEXUS 1.0.1</dd>
+              <dd>NEXUS 1.0.2</dd>
               <dt>Module</dt>
               <dd>TIME 1.0.0</dd>
               <dt>Build</dt>
               <dd>{__BUILD_ID__}</dd>
               <dt>Release</dt>
-              <dd>Production 1.0.1</dd>
+              <dd>Production 1.0.2</dd>
             </dl>
           </section>
         )}
       </main>
       <footer>
         <button onClick={nav("diagnostics")}>
-          NEXUS 1.0.1 · TIME 1.0.0 · {__BUILD_ID__}
+          NEXUS 1.0.2 · TIME 1.0.0 · {__BUILD_ID__}
         </button>
         <span>Created by Joe Freeman</span>
         <span>Files remain on this workstation.</span>

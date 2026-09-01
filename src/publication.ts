@@ -10,6 +10,9 @@ import type {
 } from "./domain";
 
 export const EMPLOYEE_VIEWER_TOKEN_KEY = "eas-employee-viewer-token-v1";
+export const EMPLOYEE_VIEWER_KEYRING_KEY = "eas-employee-viewer-keyring-v2";
+export const EMPLOYEE_VIEWER_ACCESS_CODE_KEY =
+  "eas-employee-viewer-access-code-v2";
 export const PUBLICATION_FRAGMENT_PREFIX = "#employee-viewer=";
 export const EMPLOYEE_VIEWER_DEMO_FRAGMENT = "#employee-viewer-demo";
 export const PBKDF2_ITERATIONS = 310_000;
@@ -158,7 +161,7 @@ export function generateEmployeePublicationId(month: string) {
   if (!/^\d{4}-\d{2}$/.test(month))
     throw new Error("A valid reporting month is required for publication.");
   return `${month}-${bytesToBase64Url(
-    crypto.getRandomValues(new Uint8Array(12)),
+    crypto.getRandomValues(new Uint8Array(16)),
   )}`;
 }
 
@@ -170,10 +173,6 @@ export function publicationFilename(publicationId: string) {
   if (!isEmployeePublicationId(publicationId))
     throw new Error("This Employee Viewer link is invalid or incomplete.");
   return `${publicationId}.easpub`;
-}
-
-export function publicationAssetPath(publicationId: string) {
-  return `publications/${publicationFilename(publicationId)}`;
 }
 
 export function employeeViewerUrl(publicationId: string, baseUrl: string) {
@@ -412,7 +411,7 @@ export async function loadPublishedEmployeePublication(
   let response: Response;
   try {
     response = await fetcher(
-      new URL(publicationAssetPath(publicationId), baseUrl),
+      new URL(`v1/publications/${publicationId}`, baseUrl),
     );
   } catch {
     throw new Error("The encrypted publication could not be opened.");

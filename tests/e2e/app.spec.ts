@@ -15,24 +15,44 @@ const realCarryFixturesAvailable = Object.values(realCarryFixturePaths).every(
   Boolean,
 );
 
-async function deployDownloadedPublication(page: Page) {
-  const downloadPromise = page.waitForEvent("download");
-  await page
-    .getByRole("button", {
-      name: "Download deployment-ready encrypted publication",
-    })
-    .click();
-  const download = await downloadPromise;
-  const downloadedPath = await download.path();
-  if (!downloadedPath) throw new Error("Publication download was unavailable.");
-  const publication = await readFile(downloadedPath, "utf8");
-  await page.route("**/publications/*.easpub", (route) =>
-    route.fulfill({
-      status: 200,
+async function installPublicationApi(page: Page) {
+  const publications = new Map<string, string>();
+  await page.route("**/employee-publications-api/v1/**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (url.pathname.endsWith("/sessions")) {
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({ token: "short-lived-test-session" }),
+      });
+      return;
+    }
+    const id = url.pathname.split("/").at(-1) ?? "";
+    if (request.method() === "POST") {
+      publications.set(id, request.postData() ?? "");
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({ id }),
+      });
+      return;
+    }
+    if (request.method() === "GET") {
+      const value = publications.get(id);
+      await route.fulfill(
+        value
+          ? { status: 200, contentType: "application/json", body: value }
+          : { status: 404, contentType: "application/json", body: "{}" },
+      );
+      return;
+    }
+    await route.fulfill({
+      status: 405,
       contentType: "application/json",
-      body: publication,
-    }),
-  );
+      body: "{}",
+    });
+  });
 }
 
 function syntheticTimesheet(
@@ -514,9 +534,14 @@ async function configureAdmin(
   page: import("@playwright/test").Page,
   includeLatestWorkbook = true,
 ) {
+  await installPublicationApi(page);
   await page.goto("./");
+  await page
+    .getByRole("button", { name: "Admin Processing", exact: true })
+    .click();
+  await page.getByLabel("Access code").fill("admin-code");
+  await page.getByRole("button", { name: "Unlock NEXUS" }).click();
   await page.evaluate(() => {
-    localStorage.setItem("eas-admin-authorised", "true");
     localStorage.setItem(
       "eas-admin-employee-register-v1",
       JSON.stringify({
@@ -697,7 +722,7 @@ test("landing, public viewer and production build information are available", as
   await expect(unallocated).not.toHaveAttribute("open", "");
   await unallocated.getByText("Show unallocated TPCs").click();
   await expect(page.getByText(/tell the Office Manager/)).toBeVisible();
-  await page.getByRole("button", { name: /NEXUS 1.0.1/ }).click();
+  await page.getByRole("button", { name: /NEXUS 1.0.2/ }).click();
   await expect(page.getByText("Build information")).toBeVisible();
   await expect(page.getByText("TIME 1.0.0", { exact: true })).toBeVisible();
 });
@@ -853,7 +878,9 @@ test("Unknown and Excluded are completed one-click outcomes with rich bounded so
   await expect(
     page.getByRole("button", { name: "Download report" }),
   ).toBeEnabled();
-  await expect(page.getByText("Create employee access code")).toBeVisible();
+  await expect(
+    page.getByText("Create Employee Viewer access code"),
+  ).toBeVisible();
   await expect(
     page.getByText(
       /shared pilot token|Generate secure employee token|interim pilot security/i,
@@ -1439,7 +1466,7 @@ test("Previous FY Unknown carry clears the softlock and remains visible as Unkno
   ).toBeEnabled();
 
   await page
-    .getByRole("button", { name: "Create employee access code" })
+    .getByRole("button", { name: "Create Employee Viewer access code" })
     .click();
   const token = await page.locator(".one-time-token code").innerText();
   await page.getByText(/I confirm this month is ready to publish/).click();
@@ -1447,7 +1474,6 @@ test("Previous FY Unknown carry clears the softlock and remains visible as Unkno
   const link = await page
     .getByLabel("Encrypted employee-view link")
     .inputValue();
-  await deployDownloadedPublication(page);
   await page.goto(link);
   await page.getByLabel("Employee Viewer token").fill(token);
   await page.getByRole("button", { name: "Open approved month" }).click();
@@ -1491,7 +1517,7 @@ test("Employee Viewer excludes closed and expired carry lifecycles while retaini
   });
   await page.getByRole("button", { name: "Check files" }).click();
   await page
-    .getByRole("button", { name: "Create employee access code" })
+    .getByRole("button", { name: "Create Employee Viewer access code" })
     .click();
   const token = await page.locator(".one-time-token code").innerText();
   await page.getByText(/I confirm this month is ready to publish/).click();
@@ -1499,7 +1525,6 @@ test("Employee Viewer excludes closed and expired carry lifecycles while retaini
   const link = await page
     .getByLabel("Encrypted employee-view link")
     .inputValue();
-  await deployDownloadedPublication(page);
   await page.goto(link);
   await page.getByLabel("Employee Viewer token").fill(token);
   await page.getByRole("button", { name: "Open approved month" }).click();
@@ -1783,7 +1808,7 @@ test("TPC workbook persists, reviews one item at a time, and publishes only outs
   await expect(page.getByText("No TPC items need checking.")).toBeVisible();
 
   await page
-    .getByRole("button", { name: "Create employee access code" })
+    .getByRole("button", { name: "Create Employee Viewer access code" })
     .click();
   const token = await page.locator(".one-time-token code").innerText();
   await page.getByText(/I confirm this month is ready to publish/).click();
@@ -1791,7 +1816,6 @@ test("TPC workbook persists, reviews one item at a time, and publishes only outs
   const link = await page
     .getByLabel("Encrypted employee-view link")
     .inputValue();
-  await deployDownloadedPublication(page);
   await page.goto(link);
   await page.getByLabel("Employee Viewer token").fill(token);
   await page.getByRole("button", { name: "Open approved month" }).click();
@@ -1826,7 +1850,7 @@ test("encrypted employee publication rejects the wrong token and opens with the 
   });
   await page.getByRole("button", { name: "Check files" }).click();
   await page
-    .getByRole("button", { name: "Create employee access code" })
+    .getByRole("button", { name: "Create Employee Viewer access code" })
     .click();
   const token = await page.locator(".one-time-token code").innerText();
   await page.getByText(/I confirm this month is ready to publish/).click();
@@ -1838,7 +1862,6 @@ test("encrypted employee publication rejects the wrong token and opens with the 
   expect(link).not.toContain("Employee Alpha");
   expect(link).not.toContain("Synthetic Project");
   expect(link.length).toBeLessThan(250);
-  await deployDownloadedPublication(page);
 
   await page.goto(link);
   await page.getByLabel("Employee Viewer token").fill("wrong-token");
@@ -1915,15 +1938,15 @@ test("missing and corrupt Employee Viewer assets fail closed while the demo rout
   page,
 }) => {
   const id = "2026-08-X7k3mP9q";
-  await page.route("**/publications/*.easpub", (route) =>
+  await page.route("**/employee-publications-api/v1/publications/*", (route) =>
     route.fulfill({ status: 404, body: "Not found" }),
   );
   await page.goto(`./#employee-viewer=${id}`);
   await expect(page.getByRole("alert")).toContainText("could not be found");
   await expect(page.getByText("Employee Viewer demonstration")).toHaveCount(0);
 
-  await page.unroute("**/publications/*.easpub");
-  await page.route("**/publications/*.easpub", (route) =>
+  await page.unroute("**/employee-publications-api/v1/publications/*");
+  await page.route("**/employee-publications-api/v1/publications/*", (route) =>
     route.fulfill({ status: 200, body: "{corrupt" }),
   );
   await page.reload();
