@@ -54,6 +54,7 @@ export function EmployeePublicationPanel({
     loadConfiguredEmployeeViewerAccessCode(),
   );
   const [generatedToken, setGeneratedToken] = useState("");
+  const [rotationRequested, setRotationRequested] = useState(false);
   const [publishingCode, setPublishingCode] = useState("");
   const [needsPublishingCode, setNeedsPublishingCode] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
@@ -78,10 +79,16 @@ export function EmployeePublicationPanel({
     setPublication(undefined);
     setPublicationId("");
     setLink("");
+    setRotationRequested(false);
     saveConfiguredEmployeeViewerAccessCode(token);
     setMessage(
       "A new Employee Viewer access code is ready. Save it somewhere secure.",
     );
+  }
+
+  function requestRotation() {
+    setRotationRequested(true);
+    setMessage("");
   }
 
   function showConfiguredToken() {
@@ -166,13 +173,29 @@ export function EmployeePublicationPanel({
           <button type="button" onClick={showConfiguredToken}>
             Show / copy access code
           </button>
-          <button type="button" onClick={generateToken}>
+          <button type="button" onClick={requestRotation}>
             Rotate Employee Viewer access code
           </button>
           <p className="muted">
             Rotation is exceptional: older publications continue to require the
             previous code unless they are republished.
           </p>
+        </div>
+      )}
+      {rotationRequested && (
+        <div className="warning">
+          <strong>Confirm Employee Viewer access-code rotation</strong>
+          <p>
+            The new code will be used for future publications. Existing
+            publications remain encrypted with their previous code and will
+            require that old code or republishing.
+          </p>
+          <button type="button" onClick={generateToken}>
+            Confirm rotation
+          </button>
+          <button type="button" onClick={() => setRotationRequested(false)}>
+            Cancel rotation
+          </button>
         </div>
       )}
       {generatedToken && (

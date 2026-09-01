@@ -1468,7 +1468,24 @@ test("Previous FY Unknown carry clears the softlock and remains visible as Unkno
   await page
     .getByRole("button", { name: "Create Employee Viewer access code" })
     .click();
-  const token = await page.locator(".one-time-token code").innerText();
+  let token = await page.locator(".one-time-token code").innerText();
+  const originalToken = token;
+  await page
+    .getByRole("button", { name: "Rotate Employee Viewer access code" })
+    .click();
+  await expect(
+    page.getByText(
+      /Existing publications remain encrypted with their previous code/,
+    ),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Cancel rotation" }).click();
+  expect(await page.locator(".one-time-token code").innerText()).toBe(token);
+  await page
+    .getByRole("button", { name: "Rotate Employee Viewer access code" })
+    .click();
+  await page.getByRole("button", { name: "Confirm rotation" }).click();
+  token = await page.locator(".one-time-token code").innerText();
+  expect(token).not.toBe(originalToken);
   await page.getByText(/I confirm this month is ready to publish/).click();
   await page.getByRole("button", { name: "Publish Employee Viewer" }).click();
   const link = await page

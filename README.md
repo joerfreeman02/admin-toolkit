@@ -27,7 +27,7 @@ Employee Viewer links stay short while encrypted publications are stored by the 
 1. In Cloudflare, create a Workers KV namespace and place its ID in `worker/wrangler.toml`.
 2. Configure Worker secrets: `ADMIN_TOKEN_SHA256` (the existing NEXUS admin-code SHA-256 digest) and a high-entropy `SESSION_SECRET`.
 3. Set the Worker variable `ALLOWED_ORIGIN` to `https://joerfreeman02.github.io`.
-4. Deploy `worker/` with Wrangler, then set GitHub Pages build variable `VITE_PUBLICATION_API_URL` to the Worker URL (ending in `/`). This is a public URL, not a secret.
+4. Deploy `worker/` with Wrangler. In the repository's **Settings → Secrets and variables → Actions → Variables**, create `VITE_PUBLICATION_API_URL` with the production Worker URL (ending in `/`). This is a public URL, not a secret; the Pages workflow injects it into the Vite build.
 
 Never put Worker secrets, access codes, source workbooks or publication assets in GitHub. See the Office Manager guide for the normal workflow.
 
