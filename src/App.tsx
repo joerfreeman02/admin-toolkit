@@ -3,12 +3,23 @@ import { AdminProcessing } from "./AdminProcessing";
 import type { EmployeeRegister } from "./domain";
 import { loadEmployeeRegister, saveEmployeeRegister } from "./employeeRegister";
 import { PublicViewer } from "./PublicViewer";
+import {
+  EMPLOYEE_VIEWER_DEMO_FRAGMENT,
+  PUBLICATION_FRAGMENT_PREFIX,
+} from "./publication";
 import { migrateWorkstationStore } from "./workstationStore";
 import creatorPortrait from "./assets/joe-freeman.png";
 import "./styles.css";
 
 const AUTH_KEY = "eas-admin-authorised";
 type View = "home" | "viewer" | "admin" | "about" | "diagnostics";
+
+function isEmployeeViewerRoute() {
+  return (
+    location.hash === EMPLOYEE_VIEWER_DEMO_FRAGMENT ||
+    location.hash.startsWith(PUBLICATION_FRAGMENT_PREFIX)
+  );
+}
 
 async function sha256(value: string) {
   const digest = await crypto.subtle.digest(
@@ -20,7 +31,7 @@ async function sha256(value: string) {
     .join("");
 }
 
-function AdminGate({ onAuthorise }: { onAuthorise: () => void }) {
+function AdminGate({ onAuthorise }: { onAuthorise: (code: string) => void }) {
   const [token, setToken] = useState("");
   const [error, setError] = useState("");
   async function submit(event: React.FormEvent) {
@@ -37,7 +48,7 @@ function AdminGate({ onAuthorise }: { onAuthorise: () => void }) {
       return;
     }
     localStorage.setItem(AUTH_KEY, "true");
-    onAuthorise();
+    onAuthorise(token);
   }
   return (
     <section className="panel gate">
@@ -112,11 +123,12 @@ function About() {
 
 export default function App() {
   const [view, setView] = useState<View>(() =>
-    location.hash.startsWith("#employee-viewer=") ? "viewer" : "home",
+    isEmployeeViewerRoute() ? "viewer" : "home",
   );
   const [authorised, setAuthorised] = useState(
     localStorage.getItem(AUTH_KEY) === "true",
   );
+  const [adminCode, setAdminCode] = useState("");
   const [register, setRegister] = useState<EmployeeRegister>(() =>
     loadEmployeeRegister(),
   );
@@ -128,13 +140,17 @@ export default function App() {
   }, []);
   useEffect(() => {
     const openEmployeePublication = () => {
-      if (location.hash.startsWith("#employee-viewer=")) setView("viewer");
+      if (isEmployeeViewerRoute()) setView("viewer");
     };
     window.addEventListener("hashchange", openEmployeePublication);
     return () =>
       window.removeEventListener("hashchange", openEmployeePublication);
   }, []);
-  const nav = (target: View) => () => setView(target);
+  const nav = (target: View) => () => {
+    if (target === "viewer" && !isEmployeeViewerRoute())
+      location.hash = EMPLOYEE_VIEWER_DEMO_FRAGMENT;
+    setView(target);
+  };
   const logout = () => {
     localStorage.removeItem(AUTH_KEY);
     setAuthorised(false);
@@ -160,7 +176,7 @@ export default function App() {
       <main>
         {view === "home" && (
           <section className="hero">
-            <p className="eyebrow">NEXUS 1.0.0</p>
+            <p className="eyebrow">NEXUS 1.0.2</p>
             <h1>Monthly timesheets turned into clear, ready-to-use reports.</h1>
             <p>
               NEXUS checks the month&apos;s timesheets, helps with anything it
@@ -190,9 +206,15 @@ export default function App() {
               logout={logout}
               register={register}
               onRegisterChange={setRegister}
+              adminCode={adminCode || undefined}
             />
           ) : (
-            <AdminGate onAuthorise={() => setAuthorised(true)} />
+            <AdminGate
+              onAuthorise={(code) => {
+                setAdminCode(code);
+                setAuthorised(true);
+              }}
+            />
           ))}
         {view === "about" && <About />}
         {view === "diagnostics" && (
@@ -200,20 +222,20 @@ export default function App() {
             <h2>Build information</h2>
             <dl>
               <dt>Product</dt>
-              <dd>NEXUS 1.0.0</dd>
+              <dd>NEXUS 1.0.2</dd>
               <dt>Module</dt>
               <dd>TIME 1.0.0</dd>
               <dt>Build</dt>
               <dd>{__BUILD_ID__}</dd>
               <dt>Release</dt>
-              <dd>Production 1.0.0</dd>
+              <dd>Production 1.0.2</dd>
             </dl>
           </section>
         )}
       </main>
       <footer>
         <button onClick={nav("diagnostics")}>
-          NEXUS 1.0.0 · TIME 1.0.0 · {__BUILD_ID__}
+          NEXUS 1.0.2 · TIME 1.0.0 · {__BUILD_ID__}
         </button>
         <span>Created by Joe Freeman</span>
         <span>Files remain on this workstation.</span>

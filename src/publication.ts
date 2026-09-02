@@ -10,8 +10,13 @@ import type {
 } from "./domain";
 
 export const EMPLOYEE_VIEWER_TOKEN_KEY = "eas-employee-viewer-token-v1";
+export const EMPLOYEE_VIEWER_KEYRING_KEY = "eas-employee-viewer-keyring-v2";
+export const EMPLOYEE_VIEWER_ACCESS_CODE_KEY =
+  "eas-employee-viewer-access-code-v2";
 export const PUBLICATION_FRAGMENT_PREFIX = "#employee-viewer=";
+export const EMPLOYEE_VIEWER_DEMO_FRAGMENT = "#employee-viewer-demo";
 export const PBKDF2_ITERATIONS = 310_000;
+const PUBLICATION_ID_PATTERN = /^\d{4}-\d{2}-[A-Za-z0-9_-]{8,64}$/;
 
 const EncryptedPublicationSchema = z.object({
   format: z.literal("eas-employee-publication"),
@@ -150,6 +155,38 @@ async function deriveKey(token: string, salt: Uint8Array, iterations: number) {
 export function generateEmployeeViewerToken() {
   return bytesToBase64Url(crypto.getRandomValues(new Uint8Array(32)));
 }
+
+/** A public identifier: it contains no employee or access-code information. */
+export function generateEmployeePublicationId(month: string) {
+  if (!/^\d{4}-\d{2}$/.test(month))
+    throw new Error("A valid reporting month is required for publication.");
+  return `${month}-${bytesToBase64Url(
+    crypto.getRandomValues(new Uint8Array(16)),
+  )}`;
+}
+
+export function isEmployeePublicationId(value: string) {
+  return PUBLICATION_ID_PATTERN.test(value);
+}
+
+export function publicationFilename(publicationId: string) {
+  if (!isEmployeePublicationId(publicationId))
+    throw new Error("This Employee Viewer link is invalid or incomplete.");
+  return `${publicationId}.easpub`;
+}
+
+export function employeeViewerUrl(publicationId: string, baseUrl: string) {
+  if (!isEmployeePublicationId(publicationId))
+    throw new Error("This Employee Viewer link is invalid or incomplete.");
+  return `${baseUrl.split("#", 1)[0]}${PUBLICATION_FRAGMENT_PREFIX}${publicationId}`;
+}
+
+export type EmployeeViewerLink =
+  | { kind: "demo" }
+  | { kind: "publication"; publicationId: string }
+  | { kind: "legacy"; publication: EncryptedEmployeePublication }
+  | { kind: "none" }
+  | { kind: "invalid" };
 
 export function createEmployeeDataset(
   result: ConsolidationResult,
@@ -345,4 +382,47 @@ export function decodePublicationFragment(hash: string) {
 
 export function parsePublicationFile(text: string) {
   return EncryptedPublicationSchema.parse(JSON.parse(text));
+}
+
+export function parseEmployeeViewerLink(hash: string): EmployeeViewerLink {
+  if (hash === EMPLOYEE_VIEWER_DEMO_FRAGMENT) return { kind: "demo" };
+  if (!hash.startsWith(PUBLICATION_FRAGMENT_PREFIX)) return { kind: "none" };
+  const value = hash.slice(PUBLICATION_FRAGMENT_PREFIX.length);
+  if (isEmployeePublicationId(value))
+    return { kind: "publication", publicationId: value };
+  try {
+    return { kind: "legacy", publication: decodePublicationFragment(hash)! };
+  } catch {
+    return { kind: "invalid" };
+  }
+}
+
+export class PublishedEmployeePublicationNotFoundError extends Error {
+  constructor() {
+    super("This published Employee Viewer could not be found.");
+  }
+}
+
+export async function loadPublishedEmployeePublication(
+  publicationId: string,
+  fetcher: typeof fetch = fetch,
+  baseUrl: string = document.baseURI,
+) {
+  let response: Response;
+  try {
+    response = await fetcher(
+      new URL(`v1/publications/${publicationId}`, baseUrl),
+    );
+  } catch {
+    throw new Error("The encrypted publication could not be opened.");
+  }
+  if (response.status === 404)
+    throw new PublishedEmployeePublicationNotFoundError();
+  if (!response.ok)
+    throw new Error("The encrypted publication could not be opened.");
+  try {
+    return parsePublicationFile(await response.text());
+  } catch {
+    throw new Error("The encrypted publication could not be opened.");
+  }
 }

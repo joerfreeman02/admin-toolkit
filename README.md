@@ -6,7 +6,7 @@ NEXUS brings monthly timesheets, carried hours, project information and outstand
 
 ## Status and versions
 
-- Production release: product `NEXUS 1.0.0`, module `TIME 1.0.0`.
+- Production release: product `NEXUS 1.0.2`, module `TIME 1.0.0`.
 - Starting pre-sprint candidate: `ADMIN-0.2.0 / TIME-0.2.0` at `def244ccbfcc1e688296f29f2469eba5a453c2c7`.
 - Last accepted recovery baseline: tag `sprint-0-admin-0.1.1-time-0.1.1` at `5b99054ea78bdfc77369c7215bb0cf7530a6c8f4` (merged main baseline `d575ab58957aedf15b68f780ebe5bdddb84f0175`).
 - Build identity comes from `GITHUB_SHA`, falling back to `local-dev`.
@@ -17,6 +17,20 @@ NEXUS brings monthly timesheets, carried hours, project information and outstand
 2. **Review anything NEXUS couldn't identify** one item at a time. Suggested project/internal matches, **Use Time in Lieu**, **Leave as Unknown Project**, **Exclude these hours** and **Treat as former employee** save and advance in one deliberate click. Progress retains the original session total while separately showing the unresolved count. **Skip for now** advances without resolving the item.
 3. **Create monthly reports** for project and protected internal hours.
 4. **Publish employee viewer** only after deliberate approval.
+
+### Employee Viewer publication service
+
+Employee Viewer links stay short while encrypted publications are stored in a private Cloudflare R2 bucket through the Cloudflare Worker. The GitHub Pages app sends an already-authorised Office Manager's runtime admin code over HTTPS only to receive a five-minute publishing session; the code and session are never persisted. The Worker stores only validated encrypted JSON, then NEXUS retrieves and validates the same package before displaying **Employee Viewer published**. The optional encrypted backup download is for recovery only.
+
+#### One-time developer setup
+
+1. In Cloudflare R2, create the private bucket `nexus-employee-publications` and bind it to the Worker as `PUBLICATIONS` (as configured in `worker/wrangler.toml`). Do not make the bucket public.
+2. Configure Worker secrets: `ADMIN_TOKEN_SHA256` (the existing NEXUS admin-code SHA-256 digest) and a high-entropy `SESSION_SECRET`.
+3. Set the Worker variable `ALLOWED_ORIGIN` to `https://joerfreeman02.github.io`.
+4. Deploy `worker/` with Wrangler.
+5. In the repository's **Settings → Secrets and variables → Actions → Variables**, create the Actions variable `VITE_PUBLICATION_API_URL=<production Worker URL>` (ending in `/`). This public Worker URL is a variable, not a secret; the Pages workflow injects it into the Vite build.
+
+Never put Worker secrets, access codes, source workbooks or publication assets in GitHub. See the Office Manager guide for the normal workflow.
 
 The Current FY workbook is replaced after each valid upload and retained on the workstation. Earlier April-to-March workbooks can be retained as read-only history. NEXUS processes recognised month sheets chronologically. Green `#92D050` starts or continues carry into the next month; a later orange/grey state closes it, and absence or a non-green next-month state expires it. Historic green cells never remain live indefinitely. Historical employees are identified from their source abbreviation and described using their latest/current registered assignment. The Employee Register never creates attendance or hours absent from the source workbook.
 

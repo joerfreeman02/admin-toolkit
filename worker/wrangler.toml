@@ -1,0 +1,10 @@
+name = "nexus-employee-publications"
+main = "src/index.ts"
+compatibility_date = "2026-09-01"
+
+[vars]
+ALLOWED_ORIGIN = "https://joerfreeman02.github.io"
+
+[[r2_buckets]]
+binding = "PUBLICATIONS"
+bucket_name = "nexus-employee-publications"

@@ -8,13 +8,25 @@ import {
 import type { EmployeeRegister, TimeEntry } from "../src/domain";
 import { addEmployee, emptyEmployeeRegister } from "../src/employeeRegister";
 import {
+  forgetRememberedEmployeeViewerTokens,
+  loadConfiguredEmployeeViewerAccessCode,
+  loadRememberedEmployeeViewerTokens,
+  rememberEmployeeViewerToken,
+} from "../src/employeeViewerAccess";
+import {
+  EMPLOYEE_VIEWER_ACCESS_CODE_KEY,
   EMPLOYEE_VIEWER_TOKEN_KEY,
   createEmployeeDataset,
   decodePublicationFragment,
   decryptEmployeePublication,
+  employeeViewerUrl,
   encodePublicationFragment,
   encryptEmployeeDataset,
+  generateEmployeePublicationId,
   generateEmployeeViewerToken,
+  loadPublishedEmployeePublication,
+  parseEmployeeViewerLink,
+  publicationFilename,
 } from "../src/publication";
 
 beforeAll(() => {
@@ -84,6 +96,133 @@ describe("encrypted Employee Viewer publication", () => {
     );
     expect(fragment).not.toMatch(/Employee Alpha|Harbour Road|2\.25/);
     expect(decodePublicationFragment(fragment)).toEqual(publication);
+    expect(parseEmployeeViewerLink(fragment)).toEqual({
+      kind: "legacy",
+      publication,
+    });
+  });
+
+  it("creates short, secure, independent publication IDs, paths and URLs", () => {
+    const august = generateEmployeePublicationId("2026-08");
+    const secondAugust = generateEmployeePublicationId("2026-08");
+    const september = generateEmployeePublicationId("2026-09");
+    const url = employeeViewerUrl(
+      august,
+      "https://joerfreeman02.github.io/admin-toolkit/",
+    );
+
+    expect(august).toMatch(/^2026-08-[A-Za-z0-9_-]{22}$/);
+    expect(secondAugust).not.toBe(august);
+    expect(publicationFilename(august)).toBe(`${august}.easpub`);
+    expect(publicationFilename(september)).not.toBe(
+      publicationFilename(august),
+    );
+    expect(url).toBe(
+      `https://joerfreeman02.github.io/admin-toolkit/#employee-viewer=${august}`,
+    );
+    expect(url.length).toBeLessThan(250);
+    expect(url).not.toMatch(/Employee Alpha|Harbour Road/);
+  });
+
+  it("loads and validates a deployed encrypted publication asset", async () => {
+    const dataset = createEmployeeDataset(
+      consolidateEntries([entry()], register(), "2026-07"),
+    );
+    const token = generateEmployeeViewerToken();
+    const publication = await encryptEmployeeDataset(dataset, token);
+    const id = generateEmployeePublicationId("2026-07");
+    const fetcher: typeof fetch = async (input) => {
+      expect(String(input)).toBe(`https://example.test/v1/publications/${id}`);
+      return new Response(JSON.stringify(publication), { status: 200 });
+    };
+
+    const loaded = await loadPublishedEmployeePublication(
+      id,
+      fetcher,
+      "https://example.test/",
+    );
+    await expect(decryptEmployeePublication(loaded, token)).resolves.toEqual(
+      dataset,
+    );
+    await expect(
+      decryptEmployeePublication(loaded, generateEmployeeViewerToken()),
+    ).rejects.toThrow(/incorrect|damaged/);
+  });
+
+  it("fails closed for missing or corrupt deployed publications and malformed links", async () => {
+    const id = generateEmployeePublicationId("2026-07");
+    await expect(
+      loadPublishedEmployeePublication(
+        id,
+        async () => new Response("not found", { status: 404 }),
+        "https://example.test/",
+      ),
+    ).rejects.toThrow("could not be found");
+    await expect(
+      loadPublishedEmployeePublication(
+        id,
+        async () => new Response("{corrupt", { status: 200 }),
+        "https://example.test/",
+      ),
+    ).rejects.toThrow("could not be opened");
+    expect(parseEmployeeViewerLink("#employee-viewer=truncated")).toEqual({
+      kind: "invalid",
+    });
+    expect(parseEmployeeViewerLink("#employee-viewer-demo")).toEqual({
+      kind: "demo",
+    });
+  });
+
+  function accessStorage() {
+    const storage = new Map<string, string>();
+    return {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => void storage.set(key, value),
+      removeItem: (key: string) => void storage.delete(key),
+      storage,
+    } as Storage & { storage: Map<string, string> };
+  }
+
+  it("migrates a legacy token safely when the public viewer opens first", () => {
+    const adapter = accessStorage();
+    adapter.storage.set(EMPLOYEE_VIEWER_TOKEN_KEY, "old-code");
+    expect(loadRememberedEmployeeViewerTokens(adapter)).toEqual(["old-code"]);
+    expect(loadConfiguredEmployeeViewerAccessCode(adapter)).toBe("old-code");
+    expect(adapter.getItem(EMPLOYEE_VIEWER_ACCESS_CODE_KEY)).toBe("old-code");
+    expect(adapter.getItem(EMPLOYEE_VIEWER_TOKEN_KEY)).toBeNull();
+    expect(loadRememberedEmployeeViewerTokens(adapter)).toEqual(["old-code"]);
+    expect(loadConfiguredEmployeeViewerAccessCode(adapter)).toBe("old-code");
+  });
+
+  it("migrates a legacy token safely when the admin publisher opens first", () => {
+    const adapter = accessStorage();
+    adapter.storage.set(EMPLOYEE_VIEWER_TOKEN_KEY, "old-code");
+    expect(loadConfiguredEmployeeViewerAccessCode(adapter)).toBe("old-code");
+    expect(loadRememberedEmployeeViewerTokens(adapter)).toEqual(["old-code"]);
+    expect(adapter.getItem(EMPLOYEE_VIEWER_ACCESS_CODE_KEY)).toBe("old-code");
+    expect(adapter.getItem(EMPLOYEE_VIEWER_TOKEN_KEY)).toBeNull();
+    expect(loadConfiguredEmployeeViewerAccessCode(adapter)).toBe("old-code");
+  });
+
+  it("does not overwrite the configured stable code during legacy migration", () => {
+    const adapter = accessStorage();
+    adapter.storage.set(EMPLOYEE_VIEWER_TOKEN_KEY, "old-code");
+    adapter.storage.set(EMPLOYEE_VIEWER_ACCESS_CODE_KEY, "stable-code");
+    expect(loadRememberedEmployeeViewerTokens(adapter)).toEqual(["old-code"]);
+    expect(loadConfiguredEmployeeViewerAccessCode(adapter)).toBe("stable-code");
+    expect(adapter.getItem(EMPLOYEE_VIEWER_TOKEN_KEY)).toBeNull();
+  });
+
+  it("retains a keyring of remembered access codes", () => {
+    const adapter = accessStorage();
+    adapter.storage.set(EMPLOYEE_VIEWER_TOKEN_KEY, "old-code");
+    expect(loadRememberedEmployeeViewerTokens(adapter)).toEqual(["old-code"]);
+    expect(rememberEmployeeViewerToken("current-code", adapter)).toEqual([
+      "current-code",
+      "old-code",
+    ]);
+    forgetRememberedEmployeeViewerTokens(adapter);
+    expect(loadRememberedEmployeeViewerTokens(adapter)).toEqual([]);
   });
 
   it("publishes neutral Unknown and Excluded totals without protected source wording", () => {

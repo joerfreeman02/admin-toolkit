@@ -6,23 +6,33 @@ import type {
   TpcResolution,
 } from "./domain";
 import {
-  EMPLOYEE_VIEWER_TOKEN_KEY,
   createEmployeeDataset,
-  encodePublicationFragment,
+  employeeViewerUrl,
   encryptEmployeeDataset,
+  generateEmployeePublicationId,
   generateEmployeeViewerToken,
+  publicationFilename,
 } from "./publication";
+import {
+  loadConfiguredEmployeeViewerAccessCode,
+  saveConfiguredEmployeeViewerAccessCode,
+} from "./employeeViewerAccess";
+import {
+  createPublishingSession,
+  fetchPublishedEmployeePublication,
+  uploadEmployeePublication,
+} from "./publicationApi";
 
 function downloadPublication(
   publication: EncryptedEmployeePublication,
-  month: string,
+  publicationId: string,
 ) {
   const url = URL.createObjectURL(
     new Blob([JSON.stringify(publication)], { type: "application/json" }),
   );
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = `EAS Employee Hours - ${month}.easpub`;
+  anchor.download = publicationFilename(publicationId);
   anchor.click();
   URL.revokeObjectURL(url);
 }
@@ -32,22 +42,25 @@ export function EmployeePublicationPanel({
   blocked = false,
   carries = [],
   tpcResolution,
+  adminCode,
 }: {
   result: ConsolidationResult;
   blocked?: boolean;
   carries?: HistoricalCarryRecord[];
   tpcResolution?: TpcResolution;
+  adminCode?: string;
 }) {
-  const [configuredToken, setConfiguredToken] = useState(
-    () => localStorage.getItem(EMPLOYEE_VIEWER_TOKEN_KEY) ?? "",
+  const [configuredToken, setConfiguredToken] = useState(() =>
+    loadConfiguredEmployeeViewerAccessCode(),
   );
   const [generatedToken, setGeneratedToken] = useState("");
-  const [remember, setRemember] = useState(
-    () => !!localStorage.getItem(EMPLOYEE_VIEWER_TOKEN_KEY),
-  );
+  const [rotationRequested, setRotationRequested] = useState(false);
+  const [publishingCode, setPublishingCode] = useState("");
+  const [needsPublishingCode, setNeedsPublishingCode] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [publication, setPublication] =
     useState<EncryptedEmployeePublication>();
+  const [publicationId, setPublicationId] = useState("");
   const [link, setLink] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -55,6 +68,7 @@ export function EmployeePublicationPanel({
   useEffect(() => {
     setConfirmed(false);
     setPublication(undefined);
+    setPublicationId("");
     setLink("");
   }, [result.month]);
 
@@ -63,18 +77,25 @@ export function EmployeePublicationPanel({
     setConfiguredToken(token);
     setGeneratedToken(token);
     setPublication(undefined);
+    setPublicationId("");
     setLink("");
+    setRotationRequested(false);
+    saveConfiguredEmployeeViewerAccessCode(token);
     setMessage(
-      "A new employee access code is ready. Save it somewhere secure.",
+      "A new Employee Viewer access code is ready. Save it somewhere secure.",
     );
-    if (remember) localStorage.setItem(EMPLOYEE_VIEWER_TOKEN_KEY, token);
   }
 
-  function changeRemember(value: boolean) {
-    setRemember(value);
-    if (value && configuredToken)
-      localStorage.setItem(EMPLOYEE_VIEWER_TOKEN_KEY, configuredToken);
-    else localStorage.removeItem(EMPLOYEE_VIEWER_TOKEN_KEY);
+  function requestRotation() {
+    setRotationRequested(true);
+    setMessage("");
+  }
+
+  function showConfiguredToken() {
+    setGeneratedToken(configuredToken);
+    setMessage(
+      "The configured Employee Viewer access code is shown for secure sharing.",
+    );
   }
 
   async function copy(value: string, success: string) {
@@ -90,6 +111,14 @@ export function EmployeePublicationPanel({
 
   async function publish() {
     if (!confirmed || !configuredToken || !result.canExport || blocked) return;
+    const activeAdminCode = adminCode ?? publishingCode;
+    if (!activeAdminCode) {
+      setNeedsPublishingCode(true);
+      setMessage(
+        "Enter the NEXUS admin code to publish. It is used only for this secure publishing session.",
+      );
+      return;
+    }
     setBusy(true);
     setMessage("");
     try {
@@ -97,11 +126,25 @@ export function EmployeePublicationPanel({
         createEmployeeDataset(result, carries, tpcResolution),
         configuredToken,
       );
-      const fragment = encodePublicationFragment(next);
-      const nextLink = `${location.origin}${location.pathname}${fragment}`;
+      const nextPublicationId = generateEmployeePublicationId(result.month);
+      const nextLink = employeeViewerUrl(
+        nextPublicationId,
+        `${location.origin}${location.pathname}`,
+      );
+      const session = await createPublishingSession(activeAdminCode);
+      await uploadEmployeePublication(nextPublicationId, next, session);
+      const verified =
+        await fetchPublishedEmployeePublication(nextPublicationId);
+      if (JSON.stringify(verified) !== JSON.stringify(next))
+        throw new Error(
+          "The uploaded publication could not be verified. It has not been marked ready to share.",
+        );
       setPublication(next);
+      setPublicationId(nextPublicationId);
       setLink(nextLink);
-      setMessage("The Employee Viewer is ready to share for this month.");
+      setMessage(
+        "Employee Viewer published. The encrypted publication was retrieved and verified; the link is ready to share.",
+      );
     } catch (cause) {
       setMessage(
         cause instanceof Error ? cause.message : "Publication failed.",
@@ -115,24 +158,50 @@ export function EmployeePublicationPanel({
     <article className="employee-publication">
       <h4>Publish Employee Viewer</h4>
       <p>
-        Create the employee access code, confirm this month&apos;s project hours
-        are ready, then publish the viewer.
+        Use the stable Employee Viewer access code, confirm this month&apos;s
+        project hours are ready, then publish the viewer.
       </p>
-      <button type="button" onClick={generateToken}>
-        Create employee access code
-      </button>
-      <label className="inline-check">
-        <input
-          type="checkbox"
-          checked={remember}
-          onChange={(event) => changeRemember(event.target.checked)}
-        />
-        Remember on this computer
-      </label>
+      {!configuredToken && (
+        <button type="button" onClick={generateToken}>
+          Create Employee Viewer access code
+        </button>
+      )}
+      {configuredToken && (
+        <div className="success">
+          <strong>Employee Viewer access</strong>
+          <p>✓ Access code configured on this workstation</p>
+          <button type="button" onClick={showConfiguredToken}>
+            Show / copy access code
+          </button>
+          <button type="button" onClick={requestRotation}>
+            Rotate Employee Viewer access code
+          </button>
+          <p className="muted">
+            Rotation is exceptional: older publications continue to require the
+            previous code unless they are republished.
+          </p>
+        </div>
+      )}
+      {rotationRequested && (
+        <div className="warning">
+          <strong>Confirm Employee Viewer access-code rotation</strong>
+          <p>
+            The new code will be used for future publications. Existing
+            publications remain encrypted with their previous code and will
+            require that old code or republishing.
+          </p>
+          <button type="button" onClick={generateToken}>
+            Confirm rotation
+          </button>
+          <button type="button" onClick={() => setRotationRequested(false)}>
+            Cancel rotation
+          </button>
+        </div>
+      )}
       {generatedToken && (
         <div className="one-time-token">
           <strong>
-            Save this access code now — it is shown only in this session
+            Save this access code now — share it separately from the link
           </strong>
           <code>{generatedToken}</code>
           <button
@@ -143,10 +212,16 @@ export function EmployeePublicationPanel({
           </button>
         </div>
       )}
-      {configuredToken && !generatedToken && (
-        <p className="success">
-          An employee access code is ready on this computer.
-        </p>
+      {needsPublishingCode && !adminCode && (
+        <label>
+          NEXUS admin code
+          <input
+            aria-label="NEXUS admin code for publishing"
+            type="password"
+            value={publishingCode}
+            onChange={(event) => setPublishingCode(event.target.value)}
+          />
+        </label>
       )}
       <label className="approval-confirmation">
         <input
@@ -164,7 +239,7 @@ export function EmployeePublicationPanel({
         }
         onClick={publish}
       >
-        {busy ? "Encrypting locally..." : "Publish Employee Viewer"}
+        {busy ? "Publishing securely..." : "Publish Employee Viewer"}
       </button>
       {(!result.canExport || blocked) && (
         <small>
@@ -174,8 +249,13 @@ export function EmployeePublicationPanel({
       {link && publication && (
         <div className="publication-output">
           <label>
-            Encrypted employee-view link
-            <textarea readOnly value={link} rows={4} />
+            Employee Viewer link
+            <textarea
+              aria-label="Encrypted employee-view link"
+              readOnly
+              value={link}
+              rows={2}
+            />
           </label>
           <div className="button-row">
             <button
@@ -186,9 +266,9 @@ export function EmployeePublicationPanel({
             </button>
             <button
               type="button"
-              onClick={() => downloadPublication(publication, result.month)}
+              onClick={() => downloadPublication(publication, publicationId)}
             >
-              Download encrypted publication file
+              Download encrypted backup
             </button>
           </div>
         </div>
