@@ -9,10 +9,12 @@ import type { EmployeeRegister, TimeEntry } from "../src/domain";
 import { addEmployee, emptyEmployeeRegister } from "../src/employeeRegister";
 import {
   forgetRememberedEmployeeViewerTokens,
+  loadConfiguredEmployeeViewerAccessCode,
   loadRememberedEmployeeViewerTokens,
   rememberEmployeeViewerToken,
 } from "../src/employeeViewerAccess";
 import {
+  EMPLOYEE_VIEWER_ACCESS_CODE_KEY,
   EMPLOYEE_VIEWER_TOKEN_KEY,
   createEmployeeDataset,
   decodePublicationFragment,
@@ -171,14 +173,49 @@ describe("encrypted Employee Viewer publication", () => {
     });
   });
 
-  it("migrates and retains a keyring of remembered legacy access codes", () => {
+  function accessStorage() {
     const storage = new Map<string, string>();
-    const adapter = {
+    return {
       getItem: (key: string) => storage.get(key) ?? null,
       setItem: (key: string, value: string) => void storage.set(key, value),
       removeItem: (key: string) => void storage.delete(key),
-    } as Storage;
-    storage.set(EMPLOYEE_VIEWER_TOKEN_KEY, "old-code");
+      storage,
+    } as Storage & { storage: Map<string, string> };
+  }
+
+  it("migrates a legacy token safely when the public viewer opens first", () => {
+    const adapter = accessStorage();
+    adapter.storage.set(EMPLOYEE_VIEWER_TOKEN_KEY, "old-code");
+    expect(loadRememberedEmployeeViewerTokens(adapter)).toEqual(["old-code"]);
+    expect(loadConfiguredEmployeeViewerAccessCode(adapter)).toBe("old-code");
+    expect(adapter.getItem(EMPLOYEE_VIEWER_ACCESS_CODE_KEY)).toBe("old-code");
+    expect(adapter.getItem(EMPLOYEE_VIEWER_TOKEN_KEY)).toBeNull();
+    expect(loadRememberedEmployeeViewerTokens(adapter)).toEqual(["old-code"]);
+    expect(loadConfiguredEmployeeViewerAccessCode(adapter)).toBe("old-code");
+  });
+
+  it("migrates a legacy token safely when the admin publisher opens first", () => {
+    const adapter = accessStorage();
+    adapter.storage.set(EMPLOYEE_VIEWER_TOKEN_KEY, "old-code");
+    expect(loadConfiguredEmployeeViewerAccessCode(adapter)).toBe("old-code");
+    expect(loadRememberedEmployeeViewerTokens(adapter)).toEqual(["old-code"]);
+    expect(adapter.getItem(EMPLOYEE_VIEWER_ACCESS_CODE_KEY)).toBe("old-code");
+    expect(adapter.getItem(EMPLOYEE_VIEWER_TOKEN_KEY)).toBeNull();
+    expect(loadConfiguredEmployeeViewerAccessCode(adapter)).toBe("old-code");
+  });
+
+  it("does not overwrite the configured stable code during legacy migration", () => {
+    const adapter = accessStorage();
+    adapter.storage.set(EMPLOYEE_VIEWER_TOKEN_KEY, "old-code");
+    adapter.storage.set(EMPLOYEE_VIEWER_ACCESS_CODE_KEY, "stable-code");
+    expect(loadRememberedEmployeeViewerTokens(adapter)).toEqual(["old-code"]);
+    expect(loadConfiguredEmployeeViewerAccessCode(adapter)).toBe("stable-code");
+    expect(adapter.getItem(EMPLOYEE_VIEWER_TOKEN_KEY)).toBeNull();
+  });
+
+  it("retains a keyring of remembered access codes", () => {
+    const adapter = accessStorage();
+    adapter.storage.set(EMPLOYEE_VIEWER_TOKEN_KEY, "old-code");
     expect(loadRememberedEmployeeViewerTokens(adapter)).toEqual(["old-code"]);
     expect(rememberEmployeeViewerToken("current-code", adapter)).toEqual([
       "current-code",

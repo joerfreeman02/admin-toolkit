@@ -10,7 +10,7 @@ Employees need a project-hours viewer before approved company authentication and
 
 The protected Admin UI creates a minimal approved project-only dataset and encrypts it locally using a separate randomly generated Employee Viewer token. PBKDF2-HMAC-SHA-256 uses a random 128-bit salt and 310,000 iterations to derive an AES-256-GCM key; encryption uses a random 96-bit IV. The versioned package contains month/algorithm metadata and ciphertext only.
 
-The encrypted package is stored in Workers KV under a random month-prefixed ID. The normal viewer URL fragment contains only that ID. The Admin UI obtains a five-minute publishing session from the Worker using the runtime Office Manager code over HTTPS, uploads only encrypted JSON, and re-fetches it before enabling the link. Successful clients may retain only the encrypted package in IndexedDB. Employee access codes are held in a local remembered keyring at the employee's choice. No PAT, GitHub write credential or permanent Worker write secret participates. Legacy embedded-package links remain readable for compatibility.
+The encrypted package is stored as a private R2 object under a random month-prefixed ID. The normal viewer URL fragment contains only that ID. The Admin UI obtains a five-minute publishing session from the Worker using the runtime Office Manager code over HTTPS, uploads only encrypted JSON, and re-fetches the same object before enabling the link. Successful clients may retain only the encrypted package in IndexedDB. Employee access codes are held in a local remembered keyring at the employee's choice. No PAT, GitHub write credential or permanent Worker write secret participates. Legacy embedded-package links remain readable for compatibility.
 
 ## Consequences
 

@@ -2,6 +2,6 @@ name = "nexus-employee-publications"
 main = "src/index.ts"
 compatibility_date = "2026-09-01"
 
-[[kv_namespaces]]
+[[r2_buckets]]
 binding = "PUBLICATIONS"
-id = "REPLACE_WITH_CLOUDFLARE_KV_NAMESPACE_ID"
+bucket_name = "nexus-employee-publications"

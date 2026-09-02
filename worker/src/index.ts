@@ -1,11 +1,15 @@
-export interface PublicationKv {
-  get(key: string): Promise<string | null>;
+export interface PublicationObject {
+  text(): Promise<string>;
+}
+
+export interface PublicationBucket {
+  get(key: string): Promise<PublicationObject | null>;
   put(key: string, value: string): Promise<void>;
   delete(key: string): Promise<void>;
 }
 
 export interface WorkerEnv {
-  PUBLICATIONS: PublicationKv;
+  PUBLICATIONS: PublicationBucket;
   ADMIN_TOKEN_SHA256: string;
   SESSION_SECRET: string;
   ALLOWED_ORIGIN: string;
@@ -177,16 +181,16 @@ export function createWorker() {
       )?.[1];
       if (!publicationId || !PUBLICATION_ID.test(publicationId))
         return response(request, env, 404, { error: "Not found." });
-      const key = `publication:${publicationId}`;
+      const key = `publication:${publicationId}.json`;
       if (request.method === "GET") {
         const publication = await env.PUBLICATIONS.get(key);
         return publication
           ? new Response(
-              publication,
+              await publication.text(),
               (() => {
                 const headers = cors(request, env);
                 headers.set("Content-Type", "application/json");
-                headers.set("Cache-Control", "public, max-age=300");
+                headers.set("Cache-Control", "no-store");
                 return { status: 200, headers };
               })(),
             )

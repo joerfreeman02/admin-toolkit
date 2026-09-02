@@ -2,7 +2,7 @@ import { webcrypto } from "node:crypto";
 import { beforeAll, describe, expect, it } from "vitest";
 import {
   createWorker,
-  type PublicationKv,
+  type PublicationBucket,
   type WorkerEnv,
 } from "../worker/src/index";
 
@@ -13,10 +13,17 @@ beforeAll(() => {
   });
 });
 
-class MemoryKv implements PublicationKv {
+class MemoryR2 implements PublicationBucket {
   values = new Map<string, string>();
   get(key: string) {
-    return Promise.resolve(this.values.get(key) ?? null);
+    const value = this.values.get(key);
+    return Promise.resolve(
+      value === undefined
+        ? null
+        : {
+            text: () => Promise.resolve(value),
+          },
+    );
   }
   put(key: string, value: string) {
     this.values.set(key, value);
@@ -50,7 +57,7 @@ async function environment() {
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
   return {
-    PUBLICATIONS: new MemoryKv(),
+    PUBLICATIONS: new MemoryR2(),
     ADMIN_TOKEN_SHA256: hash,
     SESSION_SECRET: "test-secret",
     ALLOWED_ORIGIN: "https://joerfreeman02.github.io",
@@ -88,7 +95,7 @@ describe("encrypted publication worker", () => {
       env,
     );
     expect(upload.status).toBe(201);
-    expect(env.PUBLICATIONS.values.get(`publication:${id}`)).toBe(
+    expect(env.PUBLICATIONS.values.get(`publication:${id}.json`)).toBe(
       JSON.stringify(publication),
     );
     expect(JSON.stringify([...env.PUBLICATIONS.values.values()])).not.toContain(
@@ -102,6 +109,7 @@ describe("encrypted publication worker", () => {
       env,
     );
     expect(read.status).toBe(200);
+    expect(read.headers.get("Cache-Control")).toBe("no-store");
     expect(await read.json()).toEqual(publication);
   });
 
@@ -120,6 +128,34 @@ describe("encrypted publication worker", () => {
       env,
     );
     expect(unauthorised.status).toBe(401);
+    const token = await session(env);
+    const malformed = await worker.fetch(
+      new Request(`https://worker.test/v1/publications/${id}`, {
+        method: "POST",
+        headers: {
+          Origin: env.ALLOWED_ORIGIN,
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: "{not-json}",
+      }),
+      env,
+    );
+    expect(malformed.status).toBe(422);
+    const tooLarge = await worker.fetch(
+      new Request(`https://worker.test/v1/publications/${id}`, {
+        method: "POST",
+        headers: {
+          Origin: env.ALLOWED_ORIGIN,
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          "Content-Length": "1000001",
+        },
+        body: JSON.stringify(publication),
+      }),
+      env,
+    );
+    expect(tooLarge.status).toBe(413);
     expect(
       (
         await worker.fetch(
@@ -156,7 +192,7 @@ describe("encrypted publication worker", () => {
     const env = await environment();
     const token = await session(env);
     env.PUBLICATIONS.values.set(
-      `publication:${id}`,
+      `publication:${id}.json`,
       JSON.stringify(publication),
     );
     const deleted = await createWorker().fetch(
@@ -180,5 +216,17 @@ describe("encrypted publication worker", () => {
         )
       ).status,
     ).toBe(404);
+  });
+
+  it("rejects unauthenticated revocation", async () => {
+    const env = await environment();
+    const deleted = await createWorker().fetch(
+      new Request(`https://worker.test/v1/publications/${id}`, {
+        method: "DELETE",
+        headers: { Origin: env.ALLOWED_ORIGIN },
+      }),
+      env,
+    );
+    expect(deleted.status).toBe(401);
   });
 });

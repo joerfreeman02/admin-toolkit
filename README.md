@@ -20,14 +20,15 @@ NEXUS brings monthly timesheets, carried hours, project information and outstand
 
 ### Employee Viewer publication service
 
-Employee Viewer links stay short while encrypted publications are stored by the Cloudflare Worker/KV service. The GitHub Pages app sends an already-authorised Office Manager's runtime admin code over HTTPS only to receive a five-minute publishing session; the code and session are never persisted. The Worker stores only validated encrypted JSON, then NEXUS retrieves and validates it before displaying **Employee Viewer published**. The optional encrypted backup download is for recovery only.
+Employee Viewer links stay short while encrypted publications are stored in a private Cloudflare R2 bucket through the Cloudflare Worker. The GitHub Pages app sends an already-authorised Office Manager's runtime admin code over HTTPS only to receive a five-minute publishing session; the code and session are never persisted. The Worker stores only validated encrypted JSON, then NEXUS retrieves and validates the same package before displaying **Employee Viewer published**. The optional encrypted backup download is for recovery only.
 
 #### One-time developer setup
 
-1. In Cloudflare, create a Workers KV namespace and place its ID in `worker/wrangler.toml`.
+1. In Cloudflare R2, create the private bucket `nexus-employee-publications` and bind it to the Worker as `PUBLICATIONS` (as configured in `worker/wrangler.toml`). Do not make the bucket public.
 2. Configure Worker secrets: `ADMIN_TOKEN_SHA256` (the existing NEXUS admin-code SHA-256 digest) and a high-entropy `SESSION_SECRET`.
 3. Set the Worker variable `ALLOWED_ORIGIN` to `https://joerfreeman02.github.io`.
-4. Deploy `worker/` with Wrangler. In the repository's **Settings → Secrets and variables → Actions → Variables**, create `VITE_PUBLICATION_API_URL` with the production Worker URL (ending in `/`). This is a public URL, not a secret; the Pages workflow injects it into the Vite build.
+4. Deploy `worker/` with Wrangler.
+5. In the repository's **Settings → Secrets and variables → Actions → Variables**, create the Actions variable `VITE_PUBLICATION_API_URL=<production Worker URL>` (ending in `/`). This public Worker URL is a variable, not a secret; the Pages workflow injects it into the Vite build.
 
 Never put Worker secrets, access codes, source workbooks or publication assets in GitHub. See the Office Manager guide for the normal workflow.
 
