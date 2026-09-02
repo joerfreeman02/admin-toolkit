@@ -24,7 +24,7 @@ jobs:
         env:
           VITE_ADMIN_TOKEN_SHA256: ${{ secrets.VITE_ADMIN_TOKEN_SHA256 }}
           VITE_PUBLICATION_API_URL: ${{ vars.VITE_PUBLICATION_API_URL }}
-      - uses: actions/configure-pages@v5
+      - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v3
         with: { path: dist }
   deploy:
